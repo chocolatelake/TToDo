@@ -7,27 +7,26 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-// タスク情報クラス
 public class TaskItem
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string Name { get; set; }
-    public bool IsSnoozed { get; set; }   // 後回しフラグ
-    public bool IsForgotten { get; set; } // ★追加: 忘却フラグ
+    // ★修正: 初期値を入れて警告(CS8618)を消しました
+    public string Name { get; set; } = "";
+    public bool IsSnoozed { get; set; }
+    public bool IsForgotten { get; set; }
 }
 
 class Program
 {
-    // 非タスク化文字（初期設定）
     private static readonly List<string> DefaultPrefixes = new List<string>
     {
         " ", "　", "\t",
         "→", "：", ":", "・"
     };
 
-    private DiscordSocketClient _client;
+    // ★修正: null! で初期化して警告(CS8618)を消しました
+    private DiscordSocketClient _client = null!;
 
-    // ユーザーごとのデータ
     private static Dictionary<ulong, List<TaskItem>> _userTasks = new Dictionary<ulong, List<TaskItem>>();
     private static Dictionary<ulong, HashSet<string>> _userPrefixes = new Dictionary<ulong, HashSet<string>>();
 
@@ -59,39 +58,31 @@ class Program
     {
         if (message.Author.IsBot) return;
 
-        // --- 設定コマンド (!tset) ---
         if (message.Content.StartsWith("!tset "))
         {
             await HandleConfigCommand(message);
             return;
         }
 
-        // --- ToDoコマンド (!ttodo) ---
         if (message.Content.StartsWith("!ttodo"))
         {
             ulong userId = message.Author.Id;
             string allContent = message.Content.Substring(6).Trim();
 
-            // データ初期化
             if (!_userTasks.ContainsKey(userId)) _userTasks[userId] = new List<TaskItem>();
 
-            // --- コマンド分岐 ---
-
-            // 1. バックアップ (!ttodo backup)
             if (allContent.Equals("backup", StringComparison.OrdinalIgnoreCase))
             {
                 await ShowBackup(message.Channel, userId);
                 return;
             }
 
-            // 2. 現在のリスト表示 (!ttodo list)
             if (allContent.Equals("list", StringComparison.OrdinalIgnoreCase))
             {
                 await ShowActiveList(message.Channel, userId);
                 return;
             }
 
-            // 3. 忘れたリスト表示 (!ttodo forgot)
             if (allContent.Equals("forgot", StringComparison.OrdinalIgnoreCase) ||
                 allContent.Equals("forgotten", StringComparison.OrdinalIgnoreCase))
             {
@@ -99,12 +90,9 @@ class Program
                 return;
             }
 
-            // 4. 通常のタスク追加処理
-            await AddNewTasks(message, userId, message.Content.Substring(6)); // Trimなしの生テキストを渡す
+            await AddNewTasks(message, userId, message.Content.Substring(6));
         }
     }
-
-    // --- コマンド処理メソッド群 ---
 
     private async Task ShowBackup(ISocketMessageChannel channel, ulong userId)
     {
@@ -115,8 +103,6 @@ class Program
         }
         StringBuilder sb = new StringBuilder();
         sb.AppendLine("!ttodo");
-        // 忘却フラグが立っていないものだけバックアップするのが一般的だが、
-        // 全データ保全のため、ここでは全て出力する（必要ならフィルタしてください）
         foreach (var task in _userTasks[userId])
         {
             sb.AppendLine(task.Name);
@@ -126,27 +112,26 @@ class Program
 
     private async Task ShowActiveList(ISocketMessageChannel channel, ulong userId)
     {
-        // 忘れてない、かつスヌーズしてないタスク
-        var activeTasks = _userTasks[userId]
-            .Where(t => !t.IsForgotten && !t.IsSnoozed).ToList();
+        var visibleTasks = _userTasks[userId]
+            .Where(t => !t.IsForgotten).ToList();
 
-        if (activeTasks.Count == 0)
+        if (visibleTasks.Count == 0)
         {
-            await channel.SendMessageAsync("🎉 現在、抱えているタスクはありません！");
+            await channel.SendMessageAsync("🎉 未完了のタスクはありません！（忘却分を除く）");
             return;
         }
 
-        await channel.SendMessageAsync("📂 **現在のToDo一覧:**");
-        foreach (var task in activeTasks)
+        await channel.SendMessageAsync("📂 **現在のToDo一覧 (後回し含む):**");
+        foreach (var task in visibleTasks)
         {
-            await SendTaskPanel(channel, task);
+            string displayPrefix = task.IsSnoozed ? "💤 " : "";
+            await SendTaskPanel(channel, task, displayPrefix);
             await Task.Delay(500);
         }
     }
 
     private async Task ShowForgottenList(ISocketMessageChannel channel, ulong userId)
     {
-        // 忘却フラグが立っているタスク
         var forgottenTasks = _userTasks[userId].Where(t => t.IsForgotten).ToList();
 
         if (forgottenTasks.Count == 0)
@@ -158,7 +143,6 @@ class Program
         await channel.SendMessageAsync("🌫️ **忘却の彼方にあるタスク一覧:**");
         foreach (var task in forgottenTasks)
         {
-            // 忘却専用パネルを送る
             await SendForgottenPanel(channel, task);
             await Task.Delay(500);
         }
@@ -166,6 +150,7 @@ class Program
 
     private async Task AddNewTasks(SocketMessage message, ulong userId, string rawContent)
     {
+        // ★ここがエラーの原因でした。下のメソッド(GetUserPrefixes)を呼び出します
         var prefixes = GetUserPrefixes(userId);
         string[] rawLines = rawContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
 
@@ -199,7 +184,6 @@ class Program
         }
         if (currentTaskBuffer.Length > 0) newTasksToAdd.Add(currentTaskBuffer.ToString());
 
-        // 1. 新規追加
         foreach (var taskText in newTasksToAdd)
         {
             var newItem = new TaskItem { Name = taskText, IsSnoozed = false, IsForgotten = false };
@@ -208,7 +192,6 @@ class Program
             await Task.Delay(500);
         }
 
-        // 2. 後回し分の復活（忘却分は復活しない）
         var snoozedTasks = _userTasks[userId].Where(t => t.IsSnoozed && !t.IsForgotten).ToList();
         if (snoozedTasks.Count > 0)
         {
@@ -223,118 +206,124 @@ class Program
         SaveTasksToFile();
     }
 
-    // --- パネル送信メソッド ---
-
-    // 通常タスク用パネル
-    private async Task SendTaskPanel(ISocketMessageChannel channel, TaskItem item)
+    private async Task SendTaskPanel(ISocketMessageChannel channel, TaskItem item, string prefix = "")
     {
         var builder = new ComponentBuilder()
             .WithButton("完了！", $"done_{item.Id}", ButtonStyle.Success)
             .WithButton("後回し", $"snooze_{item.Id}", ButtonStyle.Secondary)
-            .WithButton("忘れる", $"forget_{item.Id}", ButtonStyle.Danger); // ★追加
+            .WithButton("忘れる", $"forget_{item.Id}", ButtonStyle.Danger);
 
-        await channel.SendMessageAsync($"📝 **ToDo:**\n{item.Name}", components: builder.Build());
+        await channel.SendMessageAsync($"📝 **ToDo:**\n{prefix}{item.Name}", components: builder.Build());
     }
 
-    // 忘却タスク用パネル
     private async Task SendForgottenPanel(ISocketMessageChannel channel, TaskItem item)
     {
         var builder = new ComponentBuilder()
-            .WithButton("思い出す", $"recall_{item.Id}", ButtonStyle.Primary) // 青
-            .WithButton("抹消", $"delete_{item.Id}", ButtonStyle.Danger);    // 赤
+            .WithButton("思い出す", $"recall_{item.Id}", ButtonStyle.Primary)
+            .WithButton("抹消", $"delete_{item.Id}", ButtonStyle.Danger);
 
-        // 少し薄い感じで表示
         await channel.SendMessageAsync($"🌫️ **[忘却]**\n{item.Name}", components: builder.Build());
     }
 
     private async Task ButtonHandler(SocketMessageComponent component)
     {
-        string customId = component.Data.CustomId;
-        string targetId = customId.Substring(customId.IndexOf('_') + 1);
-        ulong userId = component.User.Id;
-
-        if (!_userTasks.ContainsKey(userId)) return;
-
-        var targetTask = _userTasks[userId].FirstOrDefault(t => t.Id == targetId);
-
-        // タスクが見つからない（既に消去された）場合
-        if (targetTask == null)
+        // ★追加：全体を try-catch で囲んで、エラーで落ちないようにする
+        try
         {
-            if (customId.StartsWith("snooze_") || customId.StartsWith("forget_"))
+            string customId = component.Data.CustomId;
+            string targetId = customId.Substring(customId.IndexOf('_') + 1);
+            ulong userId = component.User.Id;
+
+            if (!_userTasks.ContainsKey(userId)) return;
+
+            var targetTask = _userTasks[userId].FirstOrDefault(t => t.Id == targetId);
+
+            // タスクが見つからない場合
+            if (targetTask == null)
             {
-                // 無視
+                if (!customId.StartsWith("snooze_") && !customId.StartsWith("forget_"))
+                {
+                    // ユーザーにだけ見えるメッセージで通知
+                    await component.RespondAsync("⚠️ そのタスクは既に存在しません。", ephemeral: true);
+                }
+                return;
             }
-            else
+
+            // --- ボタンごとの処理 ---
+
+            if (customId.StartsWith("done_")) // 完了
             {
-                await component.RespondAsync("⚠️ そのタスクは既に存在しません。", ephemeral: true);
+                _userTasks[userId].Remove(targetTask);
+                string taskName = targetTask.Name;
+
+                // 画面更新を試みる
+                await component.UpdateAsync(x => {
+                    x.Content = $"✅ ~~{taskName}~~";
+                    x.Components = null;
+                });
+
+                // データ保存
+                SaveTasksToFile();
             }
-            return;
+            else if (customId.StartsWith("snooze_")) // 後回し
+            {
+                targetTask.IsSnoozed = true;
+
+                await component.UpdateAsync(x => {
+                    x.Content = $"💤 ~~{targetTask.Name}~~";
+                    x.Components = new ComponentBuilder().WithButton("完了！", $"done_{targetTask.Id}", ButtonStyle.Success).Build();
+                });
+
+                SaveTasksToFile();
+            }
+            else if (customId.StartsWith("forget_")) // 忘れる
+            {
+                targetTask.IsForgotten = true;
+
+                await component.UpdateAsync(x => {
+                    x.Content = $"🌫️ ~~{targetTask.Name}~~ (忘却リストへ)";
+                    x.Components = null;
+                });
+
+                SaveTasksToFile();
+            }
+            else if (customId.StartsWith("recall_")) // 思い出す
+            {
+                targetTask.IsForgotten = false;
+                targetTask.IsSnoozed = false;
+
+                // ここは特殊：元のメッセージを消して、新しく送る
+                await component.Message.DeleteAsync();
+                await component.Channel.SendMessageAsync("💡 **思い出しました！**");
+                await SendTaskPanel(component.Channel, targetTask);
+
+                SaveTasksToFile();
+            }
+            else if (customId.StartsWith("delete_")) // 抹消
+            {
+                _userTasks[userId].Remove(targetTask);
+
+                await component.UpdateAsync(x => {
+                    x.Content = $"🗑️ ~~{targetTask.Name}~~ (抹消済み)";
+                    x.Components = null;
+                });
+
+                SaveTasksToFile();
+            }
         }
-
-        // ★変更点：先にメモリ上のデータを書き換えて、画面を更新してしまう（3秒対策）
-        // その後で SaveTasksToFile() を呼ぶように順序を変更しました。
-
-        if (customId.StartsWith("done_")) // 完了
+        catch (Exception ex)
         {
-            _userTasks[userId].Remove(targetTask);
-            string taskName = targetTask.Name;
+            // ★重要：エラーが起きてもここで食い止めて、コンソールに表示するだけにする
+            Console.WriteLine($"[エラー回避] ボタン処理中にエラーが発生しました: {ex.Message}");
 
-            // 1. 先にDiscordに反応する
-            await component.UpdateAsync(x => { x.Content = $"✅ ~~{taskName}~~"; x.Components = null; });
-
-            // 2. 後で保存する
-            SaveTasksToFile();
-        }
-        else if (customId.StartsWith("snooze_")) // 後回し
-        {
-            targetTask.IsSnoozed = true;
-
-            await component.UpdateAsync(x => {
-                x.Content = $"💤 ~~{targetTask.Name}~~";
-                x.Components = new ComponentBuilder().WithButton("完了！", $"done_{targetTask.Id}", ButtonStyle.Success).Build();
-            });
-
-            SaveTasksToFile();
-        }
-        else if (customId.StartsWith("forget_")) // 忘れる
-        {
-            targetTask.IsForgotten = true;
-
-            await component.UpdateAsync(x => {
-                x.Content = $"🌫️ ~~{targetTask.Name}~~ (忘却リストへ)";
-                x.Components = null;
-            });
-
-            SaveTasksToFile();
-        }
-        else if (customId.StartsWith("recall_")) // 思い出す
-        {
-            targetTask.IsForgotten = false;
-            targetTask.IsSnoozed = false;
-
-            // ここはメッセージ削除と新規送信を行うため、UpdateAsyncではないが
-            // 処理が重くなる前に Respondなどは不要。削除→送信の流れ。
-            await component.Message.DeleteAsync();
-            await component.Channel.SendMessageAsync("💡 **思い出しました！**");
-            await SendTaskPanel(component.Channel, targetTask);
-
-            SaveTasksToFile();
-        }
-        else if (customId.StartsWith("delete_")) // 完全に消す
-        {
-            _userTasks[userId].Remove(targetTask);
-
-            await component.UpdateAsync(x => { x.Content = $"🗑️ ~~{targetTask.Name}~~ (抹消済み)"; x.Components = null; });
-
-            SaveTasksToFile();
+            // もし「応答がない」とDiscord側でエラー表示が出るのを防ぎたい場合、
+            // 余裕があれば以下のように「ちょっと待ってね」と返す手もありますが、
+            // 既にタイムアウトしている場合はこれも失敗するので、ログ出力のみが安全です。
         }
     }
 
-    // --- 設定・保存周り ---
-
     private async Task HandleConfigCommand(SocketMessage message)
     {
-        // ... (設定コマンド部分は変更なし。長いので省略も可能ですが、完全版として載せます) ...
         ulong userId = message.Author.Id;
         string[] parts = message.Content.Split(' ', 3);
         if (parts.Length < 2) return;
@@ -375,9 +364,6 @@ class Program
         }
     }
 
-    // --- ファイル保存・読み込み (形式変更あり: IsForgottenを追加) ---
-    // 形式: UserId|IsSnoozed|IsForgotten|Id|Content
-
     private void SaveTasksToFile()
     {
         var lines = new List<string>();
@@ -386,7 +372,6 @@ class Program
             foreach (var task in user.Value)
             {
                 string safeName = task.Name.Replace("\n", "<<NL>>").Replace("\r", "");
-                // 5項目で保存
                 lines.Add($"{user.Key}|{task.IsSnoozed}|{task.IsForgotten}|{task.Id}|{safeName}");
             }
         }
@@ -401,9 +386,7 @@ class Program
 
         foreach (var line in lines)
         {
-            var parts = line.Split('|', 5); // 5分割を試みる
-
-            // 古いデータ(4分割)への互換性対応
+            var parts = line.Split('|', 5);
             if (parts.Length < 4) continue;
 
             if (ulong.TryParse(parts[0], out ulong userId))
@@ -415,14 +398,12 @@ class Program
 
                 if (parts.Length == 5)
                 {
-                    // 新形式
                     isForgotten = bool.Parse(parts[2]);
                     id = parts[3];
                     name = parts[4].Replace("<<NL>>", "\n");
                 }
                 else
                 {
-                    // 旧形式 (IsForgottenがない時代のデータ)
                     id = parts[2];
                     name = parts[3].Replace("<<NL>>", "\n");
                 }
@@ -457,6 +438,7 @@ class Program
         }
     }
 
+    // ★前回消えていたメソッドを復活させました！
     private HashSet<string> GetUserPrefixes(ulong userId)
     {
         if (_userPrefixes.ContainsKey(userId)) return _userPrefixes[userId];
