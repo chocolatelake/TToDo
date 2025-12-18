@@ -69,10 +69,39 @@ class Program
         if (message.Content.StartsWith("!ttodo"))
         {
             ulong userId = message.Author.Id;
-            string allContent = message.Content.Substring(6);
+            // "!ttodo" の後ろを取得してトリム
+            string allContent = message.Content.Substring(6).Trim();
+
+            // ★★★ 追加機能: バックアップ出力 (!ttodo backup) ★★★
+            if (allContent.Equals("backup", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_userTasks.ContainsKey(userId) || _userTasks[userId].Count == 0)
+                {
+                    await message.Channel.SendMessageAsync("⚠️ 現在、保存されているタスクはありません。");
+                    return;
+                }
+
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("!ttodo"); // ヘッダー（これをコピーすればそのまま使える）
+
+                foreach (var task in _userTasks[userId])
+                {
+                    sb.AppendLine(task.Name); // タスク名（改行込み）をそのまま追加
+                }
+
+                // コードブロックで出力して、コピーしやすくする
+                await message.Channel.SendMessageAsync($"📦 **バックアップデータ（コピー用）:**\n```text\n{sb.ToString()}\n```");
+                return; // ここで処理終了
+            }
+            // -----------------------------------------------------------
+
+
+            // ここから下は通常のタスク登録処理（前回と同じ）
+            // ※ただし allContent は上で Trim してしまったので、解析用に再度取得
+            string rawContent = message.Content.Substring(6); // Trimしない生データ
 
             var prefixes = GetUserPrefixes(userId);
-            string[] rawLines = allContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            string[] rawLines = rawContent.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
 
             var newTasksToAdd = new List<string>();
             StringBuilder currentTaskBuffer = new StringBuilder();
@@ -144,14 +173,12 @@ class Program
     private async Task HandleConfigCommand(SocketMessage message)
     {
         ulong userId = message.Author.Id;
-        // "!tset cmd arg"
         string[] parts = message.Content.Split(' ', 3);
 
         if (parts.Length < 2) return;
         string command = parts[1].ToLower();
         string arg = parts.Length > 2 ? parts[2] : "";
 
-        // 設定ロード済みか確認（なければコピー）
         if (!_userPrefixes.ContainsKey(userId))
         {
             _userPrefixes[userId] = new HashSet<string>(DefaultPrefixes);
@@ -160,67 +187,44 @@ class Program
         switch (command)
         {
             case "list":
-                // 現在の設定を「|」区切りでコマンド形式にする
-                // タブ文字(\t)は見えないので、編集しやすいよう "\\t" という文字に変換して表示する
                 var displayList = _userPrefixes[userId].Select(p => p.Replace("\t", "\\t"));
                 string cmdStr = "!tset setall |" + string.Join("|", displayList);
-
                 await message.Channel.SendMessageAsync(
                     "🔧 **一括編集モード**\n" +
-                    "以下のコマンドをコピーし、`|` の間に好きな文字を追加・削除して送信してください。\n" +
-                    "(スペースやタブも `|` で囲むことで認識されます)\n" +
                     $"```text\n{cmdStr}\n```");
                 break;
 
             case "setall":
-                // "|a|b|c" の形式を受け取って一括置換する
                 if (string.IsNullOrEmpty(arg))
                 {
                     await message.Channel.SendMessageAsync("⚠️ 設定する文字がありません。");
                     return;
                 }
-
-                // パイプで分割
                 var newSet = arg.Split('|', StringSplitOptions.RemoveEmptyEntries);
-
                 _userPrefixes[userId].Clear();
                 foreach (var s in newSet)
                 {
-                    // "\\t" という文字を、本物のタブ文字に戻す
                     string realChar = s.Replace("\\t", "\t");
                     _userPrefixes[userId].Add(realChar);
                 }
-
                 SavePrefixesToFile();
-                await message.Channel.SendMessageAsync($"✅ 設定を一括更新しました！ ({_userPrefixes[userId].Count}個)");
+                await message.Channel.SendMessageAsync($"✅ 設定を一括更新しました！");
                 break;
 
             case "add":
-                if (string.IsNullOrEmpty(arg))
-                {
-                    await message.Channel.SendMessageAsync("⚠️ 追加する文字を指定してください");
-                    return;
-                }
+                if (string.IsNullOrEmpty(arg)) return;
                 _userPrefixes[userId].Add(arg);
                 SavePrefixesToFile();
                 await message.Channel.SendMessageAsync($"✅ `{arg}` を追加しました。");
                 break;
 
             case "del":
-                if (string.IsNullOrEmpty(arg))
-                {
-                    await message.Channel.SendMessageAsync("⚠️ 削除する文字を指定してください");
-                    return;
-                }
+                if (string.IsNullOrEmpty(arg)) return;
                 if (_userPrefixes[userId].Contains(arg))
                 {
                     _userPrefixes[userId].Remove(arg);
                     SavePrefixesToFile();
                     await message.Channel.SendMessageAsync($"🗑️ `{arg}` を削除しました。");
-                }
-                else
-                {
-                    await message.Channel.SendMessageAsync($"⚠️ `{arg}` は設定に含まれていません。");
                 }
                 break;
 
