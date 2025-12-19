@@ -29,9 +29,28 @@ namespace TToDo
             app.UseFileServer();
 
             // --- Web API Endpoints ---
-            // ※ "/" のマッピングは削除 (UseFileServerがindex.htmlを返すため)
 
-            app.MapGet("/api/tasks", () => { lock (Globals.Lock) { return Results.Json(Globals.AllTasks); } });
+            // ★変更: モードによって返すデータを変える
+            app.MapGet("/api/tasks", (HttpContext ctx) => {
+                lock (Globals.Lock)
+                {
+                    string mode = ctx.Request.Query["mode"];
+
+                    // チームモードなら全員分 (アーカイブ以外)
+                    if (mode == "team")
+                    {
+                        return Results.Json(Globals.AllTasks.Where(t => !t.IsForgotten));
+                    }
+
+                    // 個人モードならその人だけ
+                    if (ulong.TryParse(ctx.Request.Query["uid"], out ulong userId))
+                    {
+                        return Results.Json(Globals.AllTasks.Where(t => t.UserId == userId));
+                    }
+
+                    return Results.Json(new List<TaskItem>());
+                }
+            });
 
             app.MapPost("/api/update", async (TaskItem item) => {
                 lock (Globals.Lock)

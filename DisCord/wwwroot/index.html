@@ -106,48 +106,92 @@
     <script>
         const { createApp } = Vue
         createApp({
-            data() { return { tasks: [], loading: true, editingTask: null, editForm: {}, sortMode: 'priority' } },
+            data() {
+                return {
+                    tasks: [],
+                    loading: true,
+                    editingTask: null,
+                    editForm: {},
+                    sortMode: 'priority',
+                    userId: null // ★追加: 自分のID
+                }
+            },
             computed: {
+                // ... (computedはそのまま) ...
                 tasksActive() {
                     let list = this.tasks.filter(t => !t.isForgotten && !t.completedAt);
                     return this.applySort(list);
                 },
                 tasksDone() {
                     let list = this.tasks.filter(t => !t.isForgotten && t.completedAt);
-                    // 完了タスクは通常「完了日時順」が見やすいが、指定があればソートに従う
                     if (this.sortMode === 'priority') {
-                        // 完了済みは基本的に新しい順、優先度は次点
                         return list.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
                     } else {
                         return this.applySort(list);
                     }
                 },
                 tasksArchive() {
-                    return this.tasks.filter(t => t.isForgotten); // アーカイブは作成順(ID)のまま
+                    return this.tasks.filter(t => t.isForgotten);
                 }
             },
-            mounted() { this.fetchTasks(); setInterval(this.fetchTasks, 3000); },
-            methods: {
-                async fetchTasks() { if (this.editingTask) return; try { const r = await fetch('/api/tasks'); this.tasks = await r.json(); this.loading = false; } catch { } },
+            mounted() {
+                // ★追加: URLから ?uid=... を取得して記憶する
+                const params = new URLSearchParams(window.location.search);
+                const uidParam = params.get('uid');
 
-                // ソート共通ロジック
+                if (uidParam) {
+                    this.userId = uidParam;
+                    localStorage.setItem('ttodo_uid', uidParam); // 次回用に保存
+                } else {
+                    this.userId = localStorage.getItem('ttodo_uid'); // 保存されたIDを使う
+                }
+
+                if (!this.userId) {
+                    alert('⚠️ ユーザーIDが見つかりません。\nDiscordで「!ttodo web」と入力して、専用URLからアクセスしてください。');
+                    this.loading = false;
+                    return;
+                }
+
+                // URLを見やすくする（?uid=...を消す演出）
+                if (uidParam) {
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+
+                this.fetchTasks();
+                setInterval(this.fetchTasks, 3000);
+            },
+            methods: {
+                async fetchTasks() {
+                    if (this.editingTask || !this.userId) return;
+                    try {
+                        // ★変更: 自分のIDをサーバーに伝える
+                        const r = await fetch(`/api/tasks?uid=${this.userId}`);
+                        this.tasks = await r.json();
+                        this.loading = false;
+                    } catch { }
+                },
+
+                // ... (中略: Drag & Dropなどはそのまま) ...
+                // ... (中略: onDragStart, onDrop, moveToDone, etc...) ...
+
+                // ★重要: タスク作成時はサーバー側でUserId判別できないので、Webから送る必要があるかも？
+                // 現状の仕様だと「Webからの新規作成」ボタンはまだ無いので、
+                // 編集(saveEdit)等のAPIは「タスクID」で検索してるからそのままでOK。
+                // ※もし将来Webから新規作成するなら、payloadにUserIdを含める必要があります。
+
+                // applySortなどのUtils系もそのまま...
                 applySort(list) {
                     if (this.sortMode === 'category') {
                         return list.sort((a, b) => {
-                            // タグ比較 (タグなしは最後 'zzzz')
                             const tagA = (a.tags && a.tags.length > 0) ? a.tags[0] : 'zzzz';
                             const tagB = (b.tags && b.tags.length > 0) ? b.tags[0] : 'zzzz';
                             if (tagA !== tagB) return tagA.localeCompare(tagB);
-                            // タグが同じなら優先度順
                             return this.getScore(b) - this.getScore(a);
                         });
                     } else {
-                        // 優先度順
                         return list.sort((a, b) => this.getScore(b) - this.getScore(a));
                     }
                 },
-
-                // Drag & Drop
                 onDragStart(evt, task) { evt.dataTransfer.dropEffect = 'move'; evt.dataTransfer.effectAllowed = 'move'; evt.dataTransfer.setData('taskId', task.id); },
                 onDrop(evt, status) {
                     const taskId = evt.dataTransfer.getData('taskId');
@@ -158,16 +202,13 @@
                         else if (status === 'archive') this.moveToArchive(task);
                     }
                 },
-                // Actions
                 async moveToDone(task) { if (task.isForgotten) await this.post('/api/restore', task); if (!task.completedAt) { task.completedAt = new Date().toISOString(); await this.post('/api/done', task); } },
                 async moveToActive(task) { if (task.isForgotten) await this.post('/api/restore', task); if (task.completedAt) { task.completedAt = null; await this.post('/api/done', task); } },
                 async moveToArchive(task) { if (!task.isForgotten) { task.isForgotten = true; await this.post('/api/archive', task); } },
                 async deleteTask(task) { if (!confirm('完全削除しますか？')) return; await this.post('/api/delete', task); },
-                // Edit
                 openEdit(task) { this.editingTask = task; this.editForm = { ...task, tagsStr: task.tags.join(', ') }; },
                 async saveEdit() { const p = { ...this.editForm, tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s) }; await this.post('/api/update', p); this.editingTask = null; },
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
-                // Utils
                 getScore(t) { if (t.priority === 1) return 10; if (t.priority === 0) return 5; return 1; },
                 getPrioLabel(t) { return t.priority === 1 ? '重要' : (t.priority === 0 ? '普通' : ''); },
                 getPrioClass(t) { return t.priority === 1 ? (t.difficulty === 1 ? 'p-1' : 'p-2') : (t.priority === 0 ? (t.difficulty === 1 ? 'p-3' : 'p-4') : 'p-0'); },

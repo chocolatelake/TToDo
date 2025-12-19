@@ -37,6 +37,22 @@ namespace TToDo
             if (!content.StartsWith("!ttodo")) return;
 
             string arg1 = content.Replace("!ttodo", "").Trim();
+
+            // ★追加: チーム用URLの発行
+            if (arg1.StartsWith("web team", StringComparison.OrdinalIgnoreCase))
+            {
+                string url = $"{Globals.WebUrl}/?mode=team";
+                await message.Channel.SendMessageAsync($"🌍 **チーム全体ボード:**\n全員のタスクが見れるURLです:\n{url}");
+                return;
+            }
+            // 既存: 個人用URL
+            else if (arg1.StartsWith("web", StringComparison.OrdinalIgnoreCase))
+            {
+                string url = $"{Globals.WebUrl}/?uid={message.Author.Id}";
+                await message.Channel.SendMessageAsync($"👤 **自分専用ボード:**\n自分のタスクだけが見れるURLです:\n{url}");
+                return;
+            }
+
             if (arg1.StartsWith("list", StringComparison.OrdinalIgnoreCase)) await ShowCompactList(message.Channel, message.Author, arg1);
             else if (arg1.StartsWith("report", StringComparison.OrdinalIgnoreCase)) await ShowReport(message.Channel, message.Author, arg1);
             else if (arg1.StartsWith("close", StringComparison.OrdinalIgnoreCase)) await RunDailyClose(message.Author.Id, message.Channel);
@@ -64,10 +80,18 @@ namespace TToDo
                 else
                 {
                     if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
-                    pendingTask = new TaskItem { ChannelId = channel.Id, UserId = user.Id, Content = trimLine, Tags = new List<string>(currentTags) };
+                    // ★変更: UserName にユーザー名をセット
+                    pendingTask = new TaskItem
+                    {
+                        ChannelId = channel.Id,
+                        UserId = user.Id,
+                        UserName = user.Username, // 名前を保存
+                        Content = trimLine,
+                        Tags = new List<string>(currentTags)
+                    };
                 }
-            }
-            if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
+                }
+                if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
             Globals.SaveData();
             if (addedTasks.Count > 0) await ShowCompactList(channel, user, "");
         }
