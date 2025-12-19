@@ -1,0 +1,179 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TToDo Kanban</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app" class="app-container">
+        <header>
+            <div class="header-left">
+                <h1>TToDo Board</h1>
+            </div>
+
+            <div class="sort-controls">
+                <span class="sort-label">並び順:</span>
+                <button class="btn-sort" :class="{active: sortMode==='priority'}" @click="sortMode='priority'">🔥 優先度</button>
+                <button class="btn-sort" :class="{active: sortMode==='category'}" @click="sortMode='category'">🏷️ カテゴリ</button>
+            </div>
+        </header>
+
+        <div v-if="loading" style="text-align:center">Loading...</div>
+
+        <div v-else class="kanban-board">
+
+            <div class="column col-todo" @dragover.prevent @drop="onDrop($event, 'active')">
+                <div class="column-header">🚀 進行中 <span class="count">{{ tasksActive.length }}</span></div>
+                <div class="task-container">
+                    <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
+                         draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+                        <div class="task-content">
+                            <div class="tags">
+                                <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
+                                <span v-if="task.priority > -1" class="tag prio-tag">{{ getPrioLabel(task) }}</span>
+                            </div>
+                            <div class="text">{{ task.content }}</div>
+                        </div>
+                        <div class="actions">
+                            <button class="btn-icon btn-check" @click.stop="moveToDone(task)" title="完了にする">✔</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column col-done" @dragover.prevent @drop="onDrop($event, 'done')">
+                <div class="column-header">✅ 完了 <span class="count">{{ tasksDone.length }}</span></div>
+                <div class="task-container">
+                    <div v-for="task in tasksDone" :key="task.id" class="card done-card"
+                         draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+                        <div class="task-content">
+                            <div class="tags">
+                                <span class="tag time-tag">{{ formatTime(task.completedAt) }}</span>
+                                <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
+                            </div>
+                            <div class="text">{{ task.content }}</div>
+                        </div>
+                        <div class="actions">
+                            <button class="btn-icon btn-return" @click.stop="moveToActive(task)" title="未完了に戻す">↩️</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column col-archive" @dragover.prevent @drop="onDrop($event, 'archive')">
+                <div class="column-header">🗑️ アーカイブ <span class="count">{{ tasksArchive.length }}</span></div>
+                <div class="task-container">
+                    <div v-for="task in tasksArchive" :key="task.id" class="card archive-card"
+                         draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+                        <div class="task-content">
+                            <div class="text">{{ task.content }}</div>
+                        </div>
+                        <div class="actions">
+                            <button class="btn-icon btn-restore" @click.stop="moveToActive(task)" title="進行中に戻す">♻️</button>
+                            <button class="btn-icon btn-delete" @click.stop="deleteTask(task)" title="完全削除">💥</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div v-if="editingTask" class="modal-overlay" @click.self="editingTask = null">
+            <div class="modal">
+                <h3>タスク編集</h3>
+                <div class="form-group"><label>内容</label><textarea class="form-control" rows="4" v-model="editForm.content"></textarea></div>
+                <div class="form-group"><label>タグ (カンマ区切り)</label><input type="text" class="form-control" v-model="editForm.tagsStr"></div>
+                <div class="form-group">
+                    <label>優先度</label>
+                    <div class="chip-group">
+                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">重要</div>
+                        <div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">普通</div>
+                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">なし</div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-cancel" @click="editingTask = null">キャンセル</button>
+                    <button class="btn btn-save" @click="saveEdit">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+        createApp({
+            data() { return { tasks: [], loading: true, editingTask: null, editForm: {}, sortMode: 'priority' } },
+            computed: {
+                tasksActive() {
+                    let list = this.tasks.filter(t => !t.isForgotten && !t.completedAt);
+                    return this.applySort(list);
+                },
+                tasksDone() {
+                    let list = this.tasks.filter(t => !t.isForgotten && t.completedAt);
+                    // 完了タスクは通常「完了日時順」が見やすいが、指定があればソートに従う
+                    if (this.sortMode === 'priority') {
+                        // 完了済みは基本的に新しい順、優先度は次点
+                        return list.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+                    } else {
+                        return this.applySort(list);
+                    }
+                },
+                tasksArchive() {
+                    return this.tasks.filter(t => t.isForgotten); // アーカイブは作成順(ID)のまま
+                }
+            },
+            mounted() { this.fetchTasks(); setInterval(this.fetchTasks, 3000); },
+            methods: {
+                async fetchTasks() { if (this.editingTask) return; try { const r = await fetch('/api/tasks'); this.tasks = await r.json(); this.loading = false; } catch { } },
+
+                // ソート共通ロジック
+                applySort(list) {
+                    if (this.sortMode === 'category') {
+                        return list.sort((a, b) => {
+                            // タグ比較 (タグなしは最後 'zzzz')
+                            const tagA = (a.tags && a.tags.length > 0) ? a.tags[0] : 'zzzz';
+                            const tagB = (b.tags && b.tags.length > 0) ? b.tags[0] : 'zzzz';
+                            if (tagA !== tagB) return tagA.localeCompare(tagB);
+                            // タグが同じなら優先度順
+                            return this.getScore(b) - this.getScore(a);
+                        });
+                    } else {
+                        // 優先度順
+                        return list.sort((a, b) => this.getScore(b) - this.getScore(a));
+                    }
+                },
+
+                // Drag & Drop
+                onDragStart(evt, task) { evt.dataTransfer.dropEffect = 'move'; evt.dataTransfer.effectAllowed = 'move'; evt.dataTransfer.setData('taskId', task.id); },
+                onDrop(evt, status) {
+                    const taskId = evt.dataTransfer.getData('taskId');
+                    const task = this.tasks.find(t => t.id === taskId);
+                    if (task) {
+                        if (status === 'active') this.moveToActive(task);
+                        else if (status === 'done') this.moveToDone(task);
+                        else if (status === 'archive') this.moveToArchive(task);
+                    }
+                },
+                // Actions
+                async moveToDone(task) { if (task.isForgotten) await this.post('/api/restore', task); if (!task.completedAt) { task.completedAt = new Date().toISOString(); await this.post('/api/done', task); } },
+                async moveToActive(task) { if (task.isForgotten) await this.post('/api/restore', task); if (task.completedAt) { task.completedAt = null; await this.post('/api/done', task); } },
+                async moveToArchive(task) { if (!task.isForgotten) { task.isForgotten = true; await this.post('/api/archive', task); } },
+                async deleteTask(task) { if (!confirm('完全削除しますか？')) return; await this.post('/api/delete', task); },
+                // Edit
+                openEdit(task) { this.editingTask = task; this.editForm = { ...task, tagsStr: task.tags.join(', ') }; },
+                async saveEdit() { const p = { ...this.editForm, tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s) }; await this.post('/api/update', p); this.editingTask = null; },
+                async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
+                // Utils
+                getScore(t) { if (t.priority === 1) return 10; if (t.priority === 0) return 5; return 1; },
+                getPrioLabel(t) { return t.priority === 1 ? '重要' : (t.priority === 0 ? '普通' : ''); },
+                getPrioClass(t) { return t.priority === 1 ? (t.difficulty === 1 ? 'p-1' : 'p-2') : (t.priority === 0 ? (t.difficulty === 1 ? 'p-3' : 'p-4') : 'p-0'); },
+                formatTime(iso) { if (!iso) return ''; const d = new Date(iso); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
