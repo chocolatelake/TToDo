@@ -8,18 +8,15 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-// --- Ver 3.0 Data Model ---
 public class TaskItem
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public ulong ChannelId { get; set; }
     public ulong UserId { get; set; }
     public string Content { get; set; } = "";
-
-    public int Priority { get; set; } = -1;   // -1:Inbox, 1:High, 0:Low
+    public int Priority { get; set; } = -1;
     public int Difficulty { get; set; } = -1;
     public List<string> Tags { get; set; } = new List<string>();
-
     public bool IsSnoozed { get; set; }
     public bool IsForgotten { get; set; }
     public DateTime? CompletedAt { get; set; }
@@ -27,13 +24,11 @@ public class TaskItem
 
 class Program
 {
-    // ★復活: メモ（行結合）とみなす記号リスト
     private static readonly List<string> DefaultPrefixes = new List<string>
     {
-        " ", "　", "\t",         // 空白インデント
-        "→", "：", ":", "・",    // リスト記号
-        "※", ">", "-", "+", "*"  // 注釈・箇条書き
+        " ", "　", "\t", "→", "：", ":", "・", "※", ">", "-", "+", "*", "■", "□", "●", "○"
     };
+    private static readonly List<string> TagPrefixes = new List<string> { "#", "＃" };
 
     private DiscordSocketClient _client = null!;
     private static List<TaskItem> _allTasks = new List<TaskItem>();
@@ -43,45 +38,37 @@ class Program
 
     public async Task MainAsync()
     {
-        var config = new DiscordSocketConfig
-        {
-            GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
-        };
+        var config = new DiscordSocketConfig { GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent };
         _client = new DiscordSocketClient(config);
         _client.Log += Log;
         _client.MessageReceived += MessageReceivedAsync;
         _client.ButtonExecuted += ButtonHandler;
+        _client.ModalSubmitted += ModalHandler;
+        _client.SelectMenuExecuted += SelectMenuHandler;
 
         string token = "MTQ1MTE5Mzg0MDczNTIyNDAxMg.GJzP10.TsRAcmITV_oyZQZajFHpV0361O17t5HV_Ej_aU"; // ★トークンを設定
 
         await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
-
         LoadTasksFromJson();
-
         await Task.Delay(-1);
     }
 
     private async Task MessageReceivedAsync(SocketMessage message)
     {
-        if (message.Author.IsBot) return;
-        if (string.IsNullOrWhiteSpace(message.Content)) return;
-
+        if (message.Author.IsBot || string.IsNullOrWhiteSpace(message.Content)) return;
         string content = message.Content.Trim();
         if (!content.StartsWith("!ttodo")) return;
-
-        ulong userId = message.Author.Id;
 
         var parts = content.Split(new[] { ' ', '　', '\t', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
         string arg1 = parts.Length > 1 ? parts[1].Trim() : "";
 
-        // コマンド分岐
         if (string.Equals(arg1, "list", StringComparison.OrdinalIgnoreCase) || arg1.StartsWith("list ", StringComparison.OrdinalIgnoreCase))
         {
-            await ShowList(message.Channel, message.Author, arg1);
+            await ShowCompactList(message.Channel, message.Author, arg1);
             return;
         }
-        if (string.Equals(arg1, "report", StringComparison.OrdinalIgnoreCase) || arg1.StartsWith("report ", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(arg1, "report", StringComparison.OrdinalIgnoreCase))
         {
             await ShowReport(message.Channel, message.Author, arg1);
             return;
@@ -98,11 +85,9 @@ class Program
         }
         if (arg1.StartsWith("import"))
         {
-            string json = content.Substring(content.IndexOf("import") + 6).Trim();
-            await ImportData(message.Channel, json);
+            await ImportData(message.Channel, content.Substring(content.IndexOf("import") + 6).Trim());
             return;
         }
-
         if (!string.IsNullOrWhiteSpace(arg1))
         {
             await AddNewTasks(message.Channel, message.Author, arg1);
@@ -110,16 +95,13 @@ class Program
     }
 
     // ---------------------------------------------------------
-    // 1. Input Logic (Inbox) - ★ここを大幅修正
+    // 1. Input Logic
     // ---------------------------------------------------------
     private async Task AddNewTasks(ISocketMessageChannel channel, SocketUser user, string rawText)
     {
         var lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
         var addedTasks = new List<TaskItem>();
-
         List<string> currentTags = new List<string>();
-
-        // 一時保持用（タスク作成前のバッファ）
         TaskItem? pendingTask = null;
 
         foreach (var line in lines)
@@ -127,215 +109,211 @@ class Program
             string trimLine = line.Trim();
             if (string.IsNullOrWhiteSpace(trimLine))
             {
-                // 空行が来たら、溜まっているタスクを確定させて、タグをリセット
-                if (pendingTask != null)
-                {
-                    _allTasks.Add(pendingTask);
-                    addedTasks.Add(pendingTask);
-                    pendingTask = null;
-                }
+                if (pendingTask != null) { _allTasks.Add(pendingTask); addedTasks.Add(pendingTask); pendingTask = null; }
                 currentTags.Clear();
                 continue;
             }
-
-            // ヘッダー解析 (#タグ)
-            if (trimLine.StartsWith("#") || trimLine.StartsWith("＃"))
+            bool isTagLine = false;
+            foreach (var tp in TagPrefixes)
             {
-                // タグ行が来た時点で、前のタスクは終わり
-                if (pendingTask != null)
+                if (trimLine.StartsWith(tp))
                 {
-                    _allTasks.Add(pendingTask);
-                    addedTasks.Add(pendingTask);
-                    pendingTask = null;
+                    if (pendingTask != null) { _allTasks.Add(pendingTask); addedTasks.Add(pendingTask); pendingTask = null; }
+                    string tagName = trimLine.Substring(tp.Length).Trim();
+                    if (!string.IsNullOrEmpty(tagName)) currentTags = new List<string> { tagName };
+                    isTagLine = true; break;
                 }
-
-                string tagName = trimLine.Substring(1).Trim();
-                if (!string.IsNullOrEmpty(tagName)) currentTags = new List<string> { tagName };
-                continue;
             }
+            if (isTagLine) continue;
 
-            // ★行結合判定: DefaultPrefixes で始まる場合は「前のタスクの続き」とみなす
             bool isContinuation = false;
-            foreach (var p in DefaultPrefixes)
-            {
-                if (line.StartsWith(p))
-                {
-                    isContinuation = true;
-                    break;
-                }
-            }
+            foreach (var p in DefaultPrefixes) { if (line.StartsWith(p)) { isContinuation = true; break; } }
 
-            // 続きの行であり、かつ親タスクが存在する場合
-            if (isContinuation && pendingTask != null)
-            {
-                // 改行を入れて結合
-                pendingTask.Content += "\n" + trimLine;
-            }
+            if (isContinuation && pendingTask != null) pendingTask.Content += "\n" + trimLine;
             else
             {
-                // 新しいタスクの開始
-                // 前のタスクがあれば確定させる
-                if (pendingTask != null)
-                {
-                    _allTasks.Add(pendingTask);
-                    addedTasks.Add(pendingTask);
-                }
-
-                // --- ここから新しいタスクの解析 ---
-                int prio = -1;
-                int diff = -1;
-                string content = trimLine;
-
-                // 優先度判定 (!!, !, ??, ?)
+                if (pendingTask != null) { _allTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
+                int prio = -1; int diff = -1; string content = trimLine;
                 if (content.StartsWith("!!") || content.StartsWith("！！")) { prio = 1; diff = 1; content = content.Substring(2); }
                 else if (content.StartsWith("??") || content.StartsWith("？？")) { prio = 0; diff = 0; content = content.Substring(2); }
                 else if (content.StartsWith("!") || content.StartsWith("！")) { prio = 1; diff = 0; content = content.Substring(1); }
                 else if (content.StartsWith("?") || content.StartsWith("？")) { prio = 0; diff = 1; content = content.Substring(1); }
-
                 content = content.Trim();
-
-                // インラインタグ解析
                 var lineTags = new List<string>(currentTags);
                 if (content.StartsWith("[") || content.StartsWith("【"))
                 {
                     int endIdx = -1;
-                    if (content.Contains("]")) endIdx = content.IndexOf("]");
-                    else if (content.Contains("】")) endIdx = content.IndexOf("】");
-
-                    if (endIdx > 0)
-                    {
-                        string tagPart = content.Substring(1, endIdx - 1);
-                        lineTags.Add(tagPart);
-                        content = content.Substring(endIdx + 1).Trim();
-                    }
+                    if (content.Contains("]")) endIdx = content.IndexOf("]"); else if (content.Contains("】")) endIdx = content.IndexOf("】");
+                    if (endIdx > 0) { lineTags.Add(content.Substring(1, endIdx - 1)); content = content.Substring(endIdx + 1).Trim(); }
                 }
-
-                // 解析後のコンテンツが空でなければタスク生成（まだリストには入れない）
                 if (!string.IsNullOrWhiteSpace(content))
                 {
-                    pendingTask = new TaskItem
-                    {
-                        ChannelId = channel.Id,
-                        UserId = user.Id,
-                        Content = content,
-                        Priority = prio,
-                        Difficulty = diff,
-                        Tags = lineTags.Distinct().ToList(),
-                        IsSnoozed = false,
-                        IsForgotten = false
-                    };
+                    pendingTask = new TaskItem { ChannelId = channel.Id, UserId = user.Id, Content = content, Priority = prio, Difficulty = diff, Tags = lineTags.Distinct().ToList() };
                 }
             }
         }
-
-        // 最後のタスクを確定
-        if (pendingTask != null)
-        {
-            _allTasks.Add(pendingTask);
-            addedTasks.Add(pendingTask);
-        }
-
+        if (pendingTask != null) { _allTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
         SaveTasksToJson();
 
-        // 結果表示 (アクティブのみ)
         if (addedTasks.Count > 0)
         {
-            var allActiveTasks = _allTasks
-                .Where(t => t.UserId == user.Id &&
-                            t.ChannelId == channel.Id &&
-                            t.CompletedAt == null &&
-                            !t.IsForgotten &&
-                            !t.IsSnoozed)
-                .ToList();
-
-            var sb = new StringBuilder();
-            sb.AppendLine($"📋 **現在のタスク一覧 (全{allActiveTasks.Count}件):**");
-
-            var grouped = allActiveTasks
-                .GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "📂 未分類")
-                .OrderBy(g => g.Key);
-
-            foreach (var g in grouped)
-            {
-                sb.AppendLine($"\n**🏷️ [{g.Key}]**");
-                var sorted = g.OrderByDescending(t => GetSortScore(t));
-                foreach (var t in sorted)
-                {
-                    string icon = GetIcon(t.Priority, t.Difficulty);
-                    string isNew = addedTasks.Contains(t) ? " `(New)`" : "";
-
-                    // 表示用: 改行が含まれている場合、2行目以降をインデントして見やすくする
-                    string displayContent = t.Content;
-                    if (displayContent.Contains("\n"))
-                    {
-                        // 1行目だけ普通に表示し、2行目以降はそのまま出す（Markdownの引用記号等は使わないほうがコピペしやすい）
-                        // ただ、あまりに長いと見づらいので、1行目 + (メモ...) のように省略する手もあるが、
-                        // ここでは要望通り「テキスト一覧」なのでそのまま出す
-                    }
-
-                    sb.AppendLine($"・{icon} {displayContent}{isNew}");
-                }
-            }
-
-            bool hasInbox = allActiveTasks.Any(t => t.Priority == -1);
-            var comp = hasInbox
-                ? new ComponentBuilder().WithButton("🖊️ 仕分けを開始", "start_sort", ButtonStyle.Primary).Build()
-                : null;
-
-            await channel.SendMessageAsync(sb.ToString(), components: comp);
+            await ShowCompactList(channel, user, "");
         }
     }
 
     // ---------------------------------------------------------
-    // 2. List Logic
+    // 2. Compact List Logic
     // ---------------------------------------------------------
-    private async Task ShowList(ISocketMessageChannel channel, SocketUser user, string args)
+    private async Task ShowCompactList(ISocketMessageChannel channel, SocketUser user, string args)
     {
         IEnumerable<TaskItem> query = _allTasks.Where(t => !t.IsForgotten && t.CompletedAt == null);
-
         bool isMine = args.Contains("mine");
         bool isChannel = args.Contains("channel");
 
-        if (isMine)
-        {
-            query = query.Where(t => t.UserId == user.Id);
-            await channel.SendMessageAsync($"🌍 **マイスコープ (全チャンネルの自分のタスク):**");
-        }
-        else if (isChannel)
-        {
-            query = query.Where(t => t.ChannelId == channel.Id);
-            await channel.SendMessageAsync($"📢 **チャンネルスコープ (ここの全員のタスク):**");
-        }
-        else
-        {
-            query = query.Where(t => t.UserId == user.Id && t.ChannelId == channel.Id);
-            await channel.SendMessageAsync($"📂 **ToDoリスト (標準):**");
-        }
+        if (isMine) query = query.Where(t => t.UserId == user.Id);
+        else if (isChannel) query = query.Where(t => t.ChannelId == channel.Id);
+        else query = query.Where(t => t.UserId == user.Id && t.ChannelId == channel.Id);
 
         var visibleTasks = query.ToList();
+        if (visibleTasks.Count == 0) { await channel.SendMessageAsync("🎉 タスクはありません！"); return; }
 
-        if (visibleTasks.Count == 0)
+        var sb = new StringBuilder();
+        sb.AppendLine($"📂 **タスク一覧 ({visibleTasks.Count}件):**");
+
+        var grouped = visibleTasks.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "📂 未分類").OrderBy(g => g.Key);
+        foreach (var group in grouped)
         {
-            await channel.SendMessageAsync("🎉 タスクはありません！");
+            sb.AppendLine($"\n**{group.Key}**");
+            foreach (var task in group.OrderByDescending(t => GetSortScore(t)))
+            {
+                string label = GetPriorityLabel(task.Priority, task.Difficulty);
+                string pfx = task.IsSnoozed ? "💤 " : "";
+                string display = task.Content.Split('\n')[0];
+                if (display.Length > 20) display = display.Substring(0, 20) + "...";
+
+                sb.AppendLine($"`[{label}]` {pfx}{display}");
+            }
+        }
+
+        var menuBuilder = new SelectMenuBuilder()
+            .WithCustomId("main_task_selector")
+            .WithPlaceholder("▼ 操作するタスクを選択...")
+            .WithMinValues(1)
+            .WithMaxValues(1);
+
+        foreach (var task in visibleTasks.Take(25))
+        {
+            string label = GetPriorityLabel(task.Priority, task.Difficulty);
+            string contentLabel = task.Content.Replace("\n", " ");
+            if (contentLabel.Length > 45) contentLabel = contentLabel.Substring(0, 42) + "...";
+            if (task.IsSnoozed) contentLabel = "💤 " + contentLabel;
+
+            string fullLabel = $"[{label}] {contentLabel}";
+            string desc = task.Tags.Count > 0 ? $"[{task.Tags[0]}]" : "未分類";
+
+            menuBuilder.AddOption(fullLabel, task.Id, desc);
+        }
+
+        var builder = new ComponentBuilder()
+            .WithSelectMenu(menuBuilder)
+            .WithButton("優先度", "start_sort_p", ButtonStyle.Secondary, null, row: 1)
+            .WithButton("タグ", "start_sort_t", ButtonStyle.Secondary, null, row: 1);
+
+        await channel.SendMessageAsync(sb.ToString(), components: builder.Build());
+    }
+
+    // ---------------------------------------------------------
+    // 3. Handlers
+    // ---------------------------------------------------------
+    private async Task SelectMenuHandler(SocketMessageComponent component)
+    {
+        string customId = component.Data.CustomId;
+
+        if (customId == "main_task_selector")
+        {
+            string taskId = component.Data.Values.First();
+            var task = _allTasks.FirstOrDefault(t => t.Id == taskId);
+            if (task == null) { await component.RespondAsync("タスクが見つかりません", ephemeral: true); return; }
+            await ShowTaskActionPanel(component, task);
             return;
         }
 
-        var grouped = visibleTasks
-            .GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "📂 未分類")
-            .OrderBy(g => g.Key);
-
-        foreach (var group in grouped)
+        if (customId.StartsWith("tag_sel_"))
         {
-            await channel.SendMessageAsync($"**🏷️ [{group.Key}]**");
-            var sortedGroup = group.OrderByDescending(t => GetSortScore(t));
-            foreach (var task in sortedGroup)
+            string rawArgs = customId.Substring("tag_sel_".Length);
+            var parts = rawArgs.Split('_');
+            var task = _allTasks.FirstOrDefault(t => t.Id == parts[0]);
+            if (task != null)
             {
-                await SendTaskPanel(channel, task, isChannel, isMine);
-                await Task.Delay(200);
+                string tag = component.Data.Values.First();
+                task.Tags.Clear(); if (!string.IsNullOrEmpty(tag)) task.Tags.Add(tag);
+                SaveTasksToJson();
+
+                string mode = parts.Length > 1 ? parts[1] : "normal";
+                if (mode == "normal") await component.RespondAsync($"✅ タグを **[{tag}]** にしました。", ephemeral: true);
+                else
+                {
+                    var next = FindNextSortTarget(component.User.Id, mode);
+                    if (next != null) await ShowSortCard(component, next, mode, false);
+                    else await component.RespondAsync("🎉 仕分け完了！", ephemeral: true);
+                }
             }
         }
     }
 
+    private async Task ShowTaskActionPanel(SocketMessageComponent component, TaskItem task)
+    {
+        string label = GetPriorityLabel(task.Priority, task.Difficulty);
+        string content = task.Content;
+        string currentTag = task.Tags.Count > 0 ? task.Tags[0] : "(なし)";
+        string text = $"🛠️ **タスク操作:**\n[{label}] **{content}**\nタグ: {currentTag}";
+
+        var builder = new ComponentBuilder()
+            .WithButton(null, $"done_{task.Id}", ButtonStyle.Secondary, new Emoji("✅"))
+            .WithButton(null, $"snooze_{task.Id}", ButtonStyle.Secondary, new Emoji("💤"))
+            .WithButton(null, $"forget_{task.Id}", ButtonStyle.Secondary, new Emoji("🗑️"))
+            .WithButton(null, $"edit_{task.Id}", ButtonStyle.Secondary, new Emoji("⚙️"));
+
+        await component.RespondAsync(text, components: builder.Build(), ephemeral: true);
+    }
+
+    private async Task ButtonHandler(SocketMessageComponent component)
+    {
+        try
+        {
+            string id = component.Data.CustomId;
+
+            if (id == "start_sort_p") { await StartSortingSession(component, "p"); return; }
+            if (id == "start_sort_t") { await StartSortingSession(component, "t"); return; }
+            if (id.StartsWith("set_")) { await HandleAttributeSet(component); return; }
+            if (id.StartsWith("tag_edit_")) { await ShowTagSelector(component); return; }
+            if (id.StartsWith("tag_create_")) { await ShowTagModal(component); return; }
+
+            string tid = id.Substring(id.IndexOf('_') + 1);
+            var t = _allTasks.FirstOrDefault(x => x.Id == tid);
+            if (t == null) { await component.RespondAsync("⚠️ なし", ephemeral: true); return; }
+
+            if (id.StartsWith("done_"))
+            {
+                t.CompletedAt = DateTime.Now; SaveTasksToJson();
+                await component.UpdateAsync(x => { x.Content = $"✅ ~~{t.Content}~~ (完了)"; x.Components = null; });
+            }
+            else if (id.StartsWith("snooze_"))
+            {
+                t.IsSnoozed = !t.IsSnoozed; SaveTasksToJson();
+                await component.UpdateAsync(x => { x.Content = $"💤 ~~{t.Content}~~ (後回し)"; x.Components = null; });
+            }
+            else if (id.StartsWith("forget_"))
+            {
+                t.IsForgotten = true; SaveTasksToJson();
+                await component.UpdateAsync(x => { x.Content = $"🗑️ ~~{t.Content}~~ (忘却)"; x.Components = null; });
+            }
+            else if (id.StartsWith("edit_")) { await ShowEditPanel(component, t); }
+        }
+        catch { }
+    }
+
+    // --- Helper Logic ---
     private int GetSortScore(TaskItem t)
     {
         if (t.IsSnoozed) return 0;
@@ -346,213 +324,111 @@ class Program
         return 1;
     }
 
-    private async Task SendTaskPanel(ISocketMessageChannel channel, TaskItem item, bool showUser, bool showChannel)
+    private string GetPriorityLabel(int p, int d)
     {
-        string icon = GetIcon(item.Priority, item.Difficulty);
-        string prefix = item.IsSnoozed ? "💤 " : "";
-        string info = "";
-        if (showUser) info += $" (@{_client.GetUser(item.UserId)?.Username ?? "User"})";
-        if (showChannel) info += $" (at <#{item.ChannelId}>)";
-
-        var builder = new ComponentBuilder()
-            .WithButton("完了！", $"done_{item.Id}", ButtonStyle.Success)
-            .WithButton("後回し", $"snooze_{item.Id}", ButtonStyle.Secondary)
-            .WithButton("忘れる", $"forget_{item.Id}", ButtonStyle.Danger)
-            .WithButton("⚙️", $"edit_{item.Id}", ButtonStyle.Secondary);
-
-        await channel.SendMessageAsync($"📝 {prefix}{icon} {item.Content}{info}", components: builder.Build());
+        if (p == 1 && d == 1) return "1";
+        if (p == 1 && d == 0) return "2";
+        if (p == 0 && d == 1) return "3";
+        if (p == 0 && d == 0) return "4";
+        return "-";
     }
 
-    private string GetIcon(int p, int d)
+    private async Task StartSortingSession(SocketMessageComponent c, string m)
     {
-        if (p == 1 && d == 1) return "⛰️";
-        if (p == 1 && d == 0) return "🔥";
-        if (p == 0 && d == 1) return "🐌";
-        if (p == 0 && d == 0) return "☕";
-        return "📂";
+        var t = FindNextSortTarget(c.User.Id, m);
+        if (t == null) { await c.RespondAsync("🎉 完了！", ephemeral: true); return; }
+        await ShowSortCard(c, t, m, false);
+    }
+    private async Task HandleAttributeSet(SocketMessageComponent c)
+    {
+        var p = c.Data.CustomId.Split('_');
+        var t = _allTasks.FirstOrDefault(x => x.Id == p[3]);
+        if (t != null) { t.Priority = int.Parse(p[1]); t.Difficulty = int.Parse(p[2]); SaveTasksToJson(); }
+        var next = FindNextSortTarget(c.User.Id, p.Length > 4 ? p[4] : "p");
+        if (next != null) await ShowSortCard(c, next, p[4], true);
+        else await c.UpdateAsync(x => { x.Content = "🎉 完了！"; x.Components = null; });
+    }
+    private TaskItem? FindNextSortTarget(ulong u, string m) => _allTasks.FirstOrDefault(t => t.UserId == u && !t.IsForgotten && t.CompletedAt == null && (m == "p" ? t.Priority == -1 : t.Tags.Count == 0));
+
+    // UI Components
+    private ComponentBuilder CreateSortComp(TaskItem t, string m) => new ComponentBuilder()
+        .WithButton("1", $"set_1_1_{t.Id}_{m}", ButtonStyle.Secondary)
+        .WithButton("2", $"set_1_0_{t.Id}_{m}", ButtonStyle.Secondary)
+        .WithButton("3", $"set_0_1_{t.Id}_{m}", ButtonStyle.Secondary)
+        .WithButton("4", $"set_0_0_{t.Id}_{m}", ButtonStyle.Secondary)
+        .WithButton(null, $"tag_edit_{t.Id}_{m}", ButtonStyle.Secondary, new Emoji("🏷️"));
+
+    private async Task ShowSortCard(SocketInteraction interaction, TaskItem t, string m, bool up)
+    {
+        string txt = $"**仕分け:** {t.Content}";
+        var b = CreateSortComp(t, m);
+        if (up && interaction is SocketMessageComponent c)
+            await c.UpdateAsync(x => { x.Content = txt; x.Components = b.Build(); });
+        else
+            await interaction.RespondAsync(txt, components: b.Build(), ephemeral: true);
     }
 
-    // ---------------------------------------------------------
-    // 3. Button Handler
-    // ---------------------------------------------------------
-    private async Task ButtonHandler(SocketMessageComponent component)
+    private async Task ShowEditPanel(SocketMessageComponent c, TaskItem t)
     {
-        try
+        string txt = $"🔧 **編集:** {t.Content}\nタグ: {string.Join(",", t.Tags)}";
+        await c.RespondAsync(txt, components: CreateSortComp(t, "normal").Build(), ephemeral: true);
+    }
+    private async Task ShowTagSelector(SocketMessageComponent c)
+    {
+        string rid = c.Data.CustomId.Substring("tag_edit_".Length); var ps = rid.Split('_'); var t = _allTasks.FirstOrDefault(x => x.Id == ps[0]); if (t == null) return;
+        var tags = _allTasks.Where(x => x.UserId == c.User.Id || x.ChannelId == c.Channel.Id).SelectMany(x => x.Tags).Distinct().Take(25).ToList();
+        if (tags.Count == 0) { await ShowTagModal(c); return; }
+        var menu = new SelectMenuBuilder().WithCustomId($"tag_sel_{ps[0]}_{ps[1]}").WithPlaceholder("タグ選択");
+        foreach (var tag in tags) menu.AddOption(tag, tag);
+        // ★変更: ここだけ Primary (青)
+        var b = new ComponentBuilder().WithSelectMenu(menu).WithButton(null, $"tag_create_{ps[0]}_{ps[1]}", ButtonStyle.Primary, new Emoji("➕"));
+        await c.RespondAsync($"🏷️ {t.Content}", components: b.Build(), ephemeral: true);
+    }
+    private async Task ShowTagModal(SocketMessageComponent c)
+    {
+        string rid = c.Data.CustomId.Substring("tag_create_".Length);
+        await c.RespondWithModalAsync(new ModalBuilder().WithTitle("新規タグ").WithCustomId($"modal_tag_{rid}").AddTextInput("タグ名", "n", value: "", required: true).Build());
+    }
+    private async Task ModalHandler(SocketModal m)
+    {
+        if (!m.Data.CustomId.StartsWith("modal_tag_")) return;
+        string rid = m.Data.CustomId.Substring("modal_tag_".Length); var ps = rid.Split('_'); var t = _allTasks.FirstOrDefault(x => x.Id == ps[0]);
+        if (t != null) { string v = m.Data.Components.First().Value.Trim(); t.Tags.Clear(); if (v != "") t.Tags.Add(v); SaveTasksToJson(); }
+        string mode = ps.Length > 1 ? ps[1] : "normal";
+        if (mode == "normal") await m.RespondAsync($"✅ 更新: {t?.Content}", ephemeral: true);
+        else
         {
-            string customId = component.Data.CustomId;
-            if (customId == "start_sort") { await StartSortingSession(component); return; }
-            if (customId.StartsWith("set_")) { await HandleAttributeSet(component); return; }
-
-            string targetId = customId.Substring(customId.IndexOf('_') + 1);
-            var task = _allTasks.FirstOrDefault(t => t.Id == targetId);
-            if (task == null)
-            {
-                await component.RespondAsync("⚠️ タスクが見つかりません。", ephemeral: true);
-                return;
-            }
-
-            if (customId.StartsWith("done_"))
-            {
-                task.CompletedAt = DateTime.Now;
-                SaveTasksToJson();
-                await component.UpdateAsync(x => { x.Content = $"✅ ~~{task.Content}~~ (完了)"; x.Components = null; });
-            }
-            else if (customId.StartsWith("snooze_"))
-            {
-                task.IsSnoozed = !task.IsSnoozed;
-                SaveTasksToJson();
-                await component.UpdateAsync(x => {
-                    string prefix = task.IsSnoozed ? "💤 " : "";
-                    x.Content = $"📝 {prefix}{GetIcon(task.Priority, task.Difficulty)} {task.Content} (後回し中)";
-                    x.Components = new ComponentBuilder()
-                        .WithButton("完了！", $"done_{task.Id}", ButtonStyle.Success)
-                        .WithButton("復活", $"recall_{task.Id}", ButtonStyle.Primary)
-                        .Build();
-                });
-            }
-            else if (customId.StartsWith("forget_"))
-            {
-                task.IsForgotten = true;
-                SaveTasksToJson();
-                await component.UpdateAsync(x => { x.Content = $"🌫️ ~~{task.Content}~~ (忘却)"; x.Components = null; });
-            }
-            else if (customId.StartsWith("recall_"))
-            {
-                task.IsSnoozed = false; task.IsForgotten = false;
-                SaveTasksToJson();
-                await component.UpdateAsync(x => {
-                    x.Content = $"📝 {GetIcon(task.Priority, task.Difficulty)} {task.Content}";
-                    x.Components = new ComponentBuilder()
-                        .WithButton("完了！", $"done_{task.Id}", ButtonStyle.Success)
-                        .WithButton("後回し", $"snooze_{task.Id}", ButtonStyle.Secondary)
-                        .WithButton("忘れる", $"forget_{task.Id}", ButtonStyle.Danger)
-                        .WithButton("⚙️", $"edit_{task.Id}", ButtonStyle.Secondary).Build();
-                });
-            }
-            else if (customId.StartsWith("edit_")) { await ShowEditPanel(component, task); }
+            var next = FindNextSortTarget(m.User.Id, mode);
+            if (next != null) await ShowSortCard(m, next, mode, false);
+            else await m.RespondAsync("🎉 完了", ephemeral: true);
         }
-        catch (Exception ex) { Console.WriteLine($"Error in button: {ex}"); }
     }
 
-    private async Task StartSortingSession(SocketMessageComponent component)
+    // IO Logic
+    private async Task ShowReport(ISocketMessageChannel c, SocketUser u, string a)
     {
-        var inboxTask = _allTasks.FirstOrDefault(t => t.UserId == component.User.Id && t.Priority == -1 && !t.IsForgotten && t.CompletedAt == null);
-        if (inboxTask == null) { await component.RespondAsync("🎉 仕分けが必要なタスクはありません！", ephemeral: true); return; }
-        await ShowSortCard(component, inboxTask, isUpdate: false);
+        var d = DateTime.Today; if (a.Contains("yesterday")) d = d.AddDays(-1); else if (a.Contains("week")) d = d.AddDays(-7);
+        var l = _allTasks.Where(x => x.UserId == u.Id && x.CompletedAt >= d).OrderBy(x => x.CompletedAt).ToList();
+        if (l.Count == 0) { await c.SendMessageAsync("📭 なし"); return; }
+        var sb = new StringBuilder(); sb.AppendLine($"🎉 **Report:** {l.Count}件");
+        sb.AppendLine("```text"); foreach (var t in l) sb.AppendLine($"・{t.Content}"); sb.AppendLine("```");
+        await c.SendMessageAsync(sb.ToString());
     }
-
-    private async Task HandleAttributeSet(SocketMessageComponent component)
+    private async Task CloseDay(ISocketMessageChannel c, SocketUser u)
     {
-        var parts = component.Data.CustomId.Split('_');
-        string taskId = parts[3];
-        var task = _allTasks.FirstOrDefault(t => t.Id == taskId);
-        if (task != null) { task.Priority = int.Parse(parts[1]); task.Difficulty = int.Parse(parts[2]); SaveTasksToJson(); }
-
-        var nextTask = _allTasks.FirstOrDefault(t => t.UserId == component.User.Id && t.Priority == -1 && !t.IsForgotten && t.CompletedAt == null);
-        if (nextTask != null) await ShowSortCard(component, nextTask, isUpdate: true);
-        else await component.UpdateAsync(x => { x.Content = "🎉 仕分け完了！ `!ttodo list` で確認しましょう。"; x.Components = null; });
+        var l = _allTasks.Where(x => x.UserId == u.Id && x.CompletedAt != null).ToList(); if (l.Count == 0) { await c.SendMessageAsync("なし"); return; }
+        await ShowReport(c, u, "report"); foreach (var t in l) _allTasks.Remove(t); SaveTasksToJson(); await c.SendMessageAsync("🧹 クローズ完了");
     }
-
-    private async Task ShowSortCard(SocketMessageComponent component, TaskItem task, bool isUpdate)
+    private async Task ExportData(ISocketMessageChannel c, SocketUser u)
     {
-        string text = $"**仕分け中:**\n「{task.Content}」はどのタイプ？";
-        var builder = new ComponentBuilder()
-            .WithButton("⛰️ 最重要", $"set_1_1_{task.Id}", ButtonStyle.Danger)
-            .WithButton("🔥 即処理", $"set_1_0_{task.Id}", ButtonStyle.Success)
-            .WithButton("🐌 重量級", $"set_0_1_{task.Id}", ButtonStyle.Secondary)
-            .WithButton("☕ 雑用", $"set_0_0_{task.Id}", ButtonStyle.Secondary);
-        if (isUpdate) await component.UpdateAsync(x => { x.Content = text; x.Components = builder.Build(); });
-        else await component.RespondAsync(text, components: builder.Build(), ephemeral: true);
+        string j = JsonSerializer.Serialize(_allTasks.Where(x => x.UserId == u.Id), new JsonSerializerOptions { WriteIndented = true });
+        if (j.Length > 1900) { File.WriteAllText("e.json", j); await c.SendFileAsync("e.json"); } else await c.SendMessageAsync($"```json\n{j}\n```");
     }
-
-    private async Task ShowEditPanel(SocketMessageComponent component, TaskItem task)
+    private async Task ImportData(ISocketMessageChannel c, string j)
     {
-        string text = $"🔧 **編集モード:** {task.Content}\n現在の状態に変更しますか？";
-        var builder = new ComponentBuilder()
-            .WithButton("⛰️", $"set_1_1_{task.Id}", ButtonStyle.Secondary)
-            .WithButton("🔥", $"set_1_0_{task.Id}", ButtonStyle.Secondary)
-            .WithButton("🐌", $"set_0_1_{task.Id}", ButtonStyle.Secondary)
-            .WithButton("☕", $"set_0_0_{task.Id}", ButtonStyle.Secondary);
-        await component.RespondAsync(text, components: builder.Build(), ephemeral: true);
+        try { var l = JsonSerializer.Deserialize<List<TaskItem>>(j); if (l != null) { foreach (var i in l) { _allTasks.RemoveAll(x => x.Id == i.Id); _allTasks.Add(i); } SaveTasksToJson(); await c.SendMessageAsync($"📥 {l.Count}件"); } } catch { }
     }
-
-    // ---------------------------------------------------------
-    // 4. Report / Close / Export / Import
-    // ---------------------------------------------------------
-    private async Task ShowReport(ISocketMessageChannel channel, SocketUser user, string args)
-    {
-        DateTime since = DateTime.Today;
-        string title = "今日";
-        if (args.Contains("yesterday")) { since = DateTime.Today.AddDays(-1); title = "昨日"; }
-        else if (args.Contains("week")) { since = DateTime.Today.AddDays(-7); title = "今週"; }
-
-        var dones = _allTasks.Where(t => t.UserId == user.Id && t.CompletedAt >= since).OrderBy(t => t.CompletedAt).ToList();
-        if (dones.Count == 0) { await channel.SendMessageAsync($"📭 {title}の完了タスクはありません。"); return; }
-
-        StringBuilder sb = new StringBuilder();
-        sb.AppendLine($"🎉 **Report ({title}):** {dones.Count} Tasks Completed!");
-        sb.AppendLine("```text");
-        var grouped = dones.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "その他");
-        foreach (var g in grouped)
-        {
-            sb.AppendLine($"【{g.Key}】");
-            foreach (var t in g) sb.AppendLine($"・[{t.CompletedAt?.ToString("HH:mm")}] {GetIcon(t.Priority, t.Difficulty)} {t.Content}");
-            sb.AppendLine();
-        }
-        sb.AppendLine("```");
-        await channel.SendMessageAsync(sb.ToString());
-    }
-
-    private async Task CloseDay(ISocketMessageChannel channel, SocketUser user)
-    {
-        var dones = _allTasks.Where(t => t.UserId == user.Id && t.CompletedAt != null).ToList();
-        if (dones.Count == 0) { await channel.SendMessageAsync("本日はまだ完了タスクがありません。"); return; }
-        await ShowReport(channel, user, "report");
-        foreach (var t in dones) _allTasks.Remove(t);
-        SaveTasksToJson();
-        await channel.SendMessageAsync($"🧹 **Daily Closing:** {dones.Count}件のタスクをアーカイブし、リストから削除しました。");
-    }
-
-    private async Task ExportData(ISocketMessageChannel channel, SocketUser user)
-    {
-        var myTasks = _allTasks.Where(t => t.UserId == user.Id).ToList();
-        string json = JsonSerializer.Serialize(myTasks, new JsonSerializerOptions { WriteIndented = true });
-        if (json.Length > 1900) { File.WriteAllText("export.json", json); await channel.SendFileAsync("export.json", "📦 データエクスポート"); }
-        else await channel.SendMessageAsync($"📦 **データエクスポート:**\n```json\n{json}\n```");
-    }
-
-    private async Task ImportData(ISocketMessageChannel channel, string json)
-    {
-        try
-        {
-            var imported = JsonSerializer.Deserialize<List<TaskItem>>(json);
-            if (imported == null) return;
-            int count = 0;
-            foreach (var item in imported)
-            {
-                var existing = _allTasks.FirstOrDefault(t => t.Id == item.Id);
-                if (existing != null) _allTasks.Remove(existing);
-                _allTasks.Add(item);
-                count++;
-            }
-            SaveTasksToJson();
-            await channel.SendMessageAsync($"📥 **{count}件** のデータをインポートしました。");
-        }
-        catch (Exception ex) { await channel.SendMessageAsync($"⚠️ インポート失敗: {ex.Message}"); }
-    }
-
-    private void SaveTasksToJson()
-    {
-        try { File.WriteAllText(DbFileName, JsonSerializer.Serialize(_allTasks)); }
-        catch (Exception ex) { Console.WriteLine($"Save Error: {ex.Message}"); }
-    }
-
-    private void LoadTasksFromJson()
-    {
-        if (!File.Exists(DbFileName)) return;
-        try { var data = JsonSerializer.Deserialize<List<TaskItem>>(File.ReadAllText(DbFileName)); if (data != null) _allTasks = data; }
-        catch (Exception ex) { Console.WriteLine($"Load Error: {ex.Message}"); }
-    }
-
+    private void SaveTasksToJson() { try { File.WriteAllText(DbFileName, JsonSerializer.Serialize(_allTasks)); } catch { } }
+    private void LoadTasksFromJson() { if (File.Exists(DbFileName)) try { _allTasks = JsonSerializer.Deserialize<List<TaskItem>>(File.ReadAllText(DbFileName)) ?? new(); } catch { } }
     private Task Log(LogMessage msg) { Console.WriteLine(msg.ToString()); return Task.CompletedTask; }
 }
