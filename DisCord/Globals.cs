@@ -8,7 +8,7 @@ namespace TToDo
 {
     public static class Globals
     {
-        // 変更点: 設定ファイルから読み込むので定数ではなくプロパティに
+        // 設定
         public static string BotToken { get; set; } = "";
         public static string WebUrl { get; set; } = "http://*:5000";
 
@@ -24,7 +24,7 @@ namespace TToDo
 
         public static DateTime GetJstNow() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, JstZone);
 
-        // ★設定読み込みメソッド
+        // 設定ロード
         public static void LoadConfiguration(IConfiguration config)
         {
             BotToken = config["Discord:Token"] ?? "";
@@ -32,6 +32,7 @@ namespace TToDo
             WebUrl = $"http://*:{port}";
         }
 
+        // 保存
         public static void SaveData()
         {
             lock (Lock)
@@ -41,6 +42,7 @@ namespace TToDo
             }
         }
 
+        // 読み込み
         public static void LoadData()
         {
             lock (Lock)
