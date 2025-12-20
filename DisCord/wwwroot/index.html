@@ -239,7 +239,6 @@
                     tasks: [], configs: [], loading: true, editForm: null, isCreating: false,
                     sortMode: 'priority', userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
-                    // ★修正: targetRange 初期値追加
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
                     showFilterMenu: false, filterUsers: [], filterChannels: []
@@ -347,7 +346,7 @@
 
                     const today = new Date(); today.setHours(0, 0, 0, 0);
 
-                    // ★修正: 期間フィルタリング
+                    // 期間フィルタリング
                     let start = new Date(today);
                     let end = new Date(today);
                     end.setDate(end.getDate() + 1);
@@ -392,12 +391,13 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            userName: this.reportForm.targetUser,
-                            guildName: this.reportForm.guildName,
-                            channelName: this.reportForm.channelName,
+                            // ★ここを修正しました（サーバー側のプロパティ名に合わせる）
+                            targetUser: this.reportForm.targetUser,
+                            targetGuild: this.reportForm.guildName,
+                            targetChannel: this.reportForm.channelName,
                             sourceGuild: this.reportForm.sourceGuild,
                             sourceChannel: this.reportForm.sourceChannel,
-                            targetRange: this.reportForm.targetRange // ★追加
+                            targetRange: this.reportForm.targetRange
                         })
                     });
                     this.showReportModal = false; alert('送信しました！');
