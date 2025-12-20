@@ -305,6 +305,15 @@
             <div class="modal" style="max-width: 500px;">
                 <h3>📋 {{ isExportMode ? 'タスク一覧出力' : '日報抽出' }}</h3>
 
+                <div v-if="isExportMode" class="form-group">
+                    <div class="chip-group">
+                        <div class="chip" :class="{selected: exportScope==='all'}" @click="changeExportScope('all')">すべて</div>
+                        <div class="chip" :class="{selected: exportScope==='active'}" @click="changeExportScope('active')">進行中</div>
+                        <div class="chip" :class="{selected: exportScope==='done'}" @click="changeExportScope('done')">完了</div>
+                        <div class="chip" :class="{selected: exportScope==='archive'}" @click="changeExportScope('archive')">アーカイブ</div>
+                    </div>
+                </div>
+
                 <div v-if="!isExportMode" class="form-group">
                     <label>対象ユーザー (担当者)</label>
                     <select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview">
@@ -389,7 +398,7 @@
                     sortMode: 'priority', userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
-                    isExportMode: false,
+                    isExportMode: false, exportScope: 'all', // ★追加: エクスポート範囲
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
                     showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [],
                     newTagInput: '', selectedExistingTag: ''
@@ -446,35 +455,12 @@
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
                     return this.tasks.filter(t => {
-                        // 1. 担当者フィルタ
                         const targetName = t.assignee || '担当者未設定';
                         if (this.filterUsers.length > 0 && !this.filterUsers.includes(targetName)) return false;
-
-                        // 2. サーバーフィルタ
-                        if (this.filterGuilds.length > 0) {
-                            const key = t.guildName || '(未設定)';
-                            if (!this.filterGuilds.includes(key)) return false;
-                        }
-
-                        // 3. チャンネルフィルタ
-                        if (this.filterChannels.length > 0) {
-                            const key = (t.guildName && t.channelName) ? (t.guildName + ' / ' + t.channelName) : '(未設定)';
-                            if (!this.filterChannels.includes(key)) return false;
-                        }
-
-                        // 4. タグフィルタ
-                        if (this.filterTags.length > 0) {
-                            if (this.filterTags.includes('(タグ未設定)') && (!t.tags || t.tags.length === 0)) {
-                                return true;
-                            }
-                            if (!t.tags || !t.tags.some(tag => this.filterTags.includes(tag))) return false;
-                        }
-
-                        // 5. 優先度フィルタ
-                        if (this.filterPriorities.length > 0) {
-                            if (!this.filterPriorities.includes(t.priority)) return false;
-                        }
-
+                        if (this.filterGuilds.length > 0) { const key = t.guildName || '(未設定)'; if (!this.filterGuilds.includes(key)) return false; }
+                        if (this.filterChannels.length > 0) { const key = (t.guildName && t.channelName) ? (t.guildName + ' / ' + t.channelName) : '(未設定)'; if (!this.filterChannels.includes(key)) return false; }
+                        if (this.filterTags.length > 0) { if (this.filterTags.includes('(タグ未設定)') && (!t.tags || t.tags.length === 0)) return true; if (!t.tags || !t.tags.some(tag => this.filterTags.includes(tag))) return false; }
+                        if (this.filterPriorities.length > 0) { if (!this.filterPriorities.includes(t.priority)) return false; }
                         return true;
                     });
                 },
@@ -495,11 +481,7 @@
                 setInterval(this.fetchTasks, 3000);
             },
             methods: {
-                // ★追加: ドラッグ中のカーソルを常に許可状態にする
-                onDragOver(evt) {
-                    evt.preventDefault();
-                    evt.dataTransfer.dropEffect = 'move';
-                },
+                onDragOver(evt) { evt.preventDefault(); evt.dataTransfer.dropEffect = 'move'; },
                 async fetchTasks() {
                     if (this.editForm || this.showBatchModal || this.showReportModal || this.showConfigModal) return;
                     try {
@@ -583,8 +565,21 @@
                     this.updateReportPreview();
                     this.showReportModal = true;
                 },
-                exportList(type) {
+                // ★修正: リスト出力を開始する
+                exportList(scope) {
                     this.isExportMode = true;
+                    this.exportScope = scope;
+                    this.generateExportText();
+                    this.showReportModal = true;
+                },
+                // ★追加: チップで範囲を切り替えたとき
+                changeExportScope(scope) {
+                    this.exportScope = scope;
+                    this.generateExportText();
+                },
+                // ★追加: テキスト生成ロジックを分離
+                generateExportText() {
+                    const scope = this.exportScope;
                     let text = "";
 
                     const isFiltered = this.filterUsers.length > 0 || this.filterChannels.length > 0 || this.filterTags.length > 0 || this.filterGuilds.length > 0 || this.filterPriorities.length > 0;
@@ -605,16 +600,16 @@
                         return res + "\n";
                     };
 
-                    if (type === 'all') {
+                    if (scope === 'all') {
                         text += `📊 タスク一覧出力${filterNote}\n`;
                         text += formatTasks(this.tasksActive, "🚀 進行中");
                         text += formatTasks(this.tasksDone, "✅ 完了", true);
                         text += formatTasks(this.tasksArchive, "🗑️ アーカイブ");
-                    } else if (type === 'active') {
+                    } else if (scope === 'active') {
                         text += formatTasks(this.tasksActive, `🚀 未完了タスク一覧${filterNote}`);
-                    } else if (type === 'done') {
+                    } else if (scope === 'done') {
                         text += formatTasks(this.tasksDone, `✅ 完了タスク一覧${filterNote}`, true);
-                    } else if (type === 'archive') {
+                    } else if (scope === 'archive') {
                         text += formatTasks(this.tasksArchive, `🗑️ アーカイブ一覧${filterNote}`);
                     }
 
@@ -623,7 +618,6 @@
                     } else {
                         this.reportPreview = text.trim();
                     }
-                    this.showReportModal = true;
                 },
                 updateReportPreview() {
                     if (this.isExportMode) return;
