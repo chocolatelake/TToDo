@@ -79,13 +79,11 @@ namespace TToDo
             // 2. Webページ
             if (arg1.StartsWith("web", StringComparison.OrdinalIgnoreCase))
             {
-                // ★変更: 公開用のURLを表示
                 await message.Channel.SendMessageAsync($"🌍 **TToDo Board:**\n{Globals.PublicUrl}");
                 return;
             }
 
             // 3. 日報 (report today / report yesterday のみ)
-            // ★変更: "report" 単体や "today" 単体を排除
             if (arg1.Equals("report today", StringComparison.OrdinalIgnoreCase) ||
                 arg1.Equals("report yesterday", StringComparison.OrdinalIgnoreCase))
             {
@@ -101,8 +99,6 @@ namespace TToDo
             }
 
             // 5. タスク追加 (それ以外の場合)
-            // ※ "report" とだけ打った場合もタスクとして登録されてしまうのを防ぐならここに追加条件が必要ですが、
-            // 今回は「コマンドに合致しないものはタスク」というルール通りにします。
             if (!string.IsNullOrWhiteSpace(arg1))
             {
                 await AddNewTasks(message.Channel, message.Author, arg1);
@@ -113,10 +109,10 @@ namespace TToDo
         private async Task ShowHelp(ISocketMessageChannel c)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("📖 **TToDo Help**"); 
+            sb.AppendLine("📖 **TToDo Help**");
             sb.AppendLine($"Web Board: {Globals.PublicUrl}");
             sb.AppendLine("");
-            sb.AppendLine("`!ttodo report today`"); // ★変更
+            sb.AppendLine("`!ttodo report today`");
             sb.AppendLine("今日の完了タスク(日報)を表示します。");
             sb.AppendLine("");
             sb.AppendLine("`!ttodo report yesterday`");
@@ -237,6 +233,10 @@ namespace TToDo
                     string state = task.CompletedAt != null ? "✅ " : "";
                     string display = task.Content.Split('\n')[0];
                     if (display.Length > 25) display = display.Substring(0, 25) + "...";
+
+                    // ★修正: 完了時は取り消し線をつける
+                    if (task.CompletedAt != null) display = $"~~{display}~~";
+
                     sb.AppendLine($"`[{label}]` {state}{display}");
                 }
             }
