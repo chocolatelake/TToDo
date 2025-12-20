@@ -26,16 +26,17 @@ namespace TToDo
 
             // --- Web API Endpoints ---
 
+            // ★変更: 常に全員分のタスク(アーカイブ以外)を返す
             app.MapGet("/api/tasks", (HttpContext ctx) => {
                 lock (Globals.Lock)
                 {
-                    string mode = ctx.Request.Query["mode"];
-                    if (mode == "team") return Results.Json(Globals.AllTasks.Where(t => !t.IsForgotten));
-                    if (ulong.TryParse(ctx.Request.Query["uid"], out ulong userId)) return Results.Json(Globals.AllTasks.Where(t => t.UserId == userId));
-                    return Results.Json(new List<TaskItem>());
+                    // クエリパラメータ(?uid=...)は無視して、常に全件返す
+                    // フロントエンド側で絞り込みを行うため
+                    return Results.Json(Globals.AllTasks.Where(t => !t.IsForgotten));
                 }
             });
 
+            // タスク更新
             app.MapPost("/api/update", async (TaskItem item) => {
                 lock (Globals.Lock)
                 {
@@ -61,7 +62,7 @@ namespace TToDo
                 return Results.Ok();
             });
 
-            // ★変更: チャンネル一括変更API (完了タスクも対象にする)
+            // チャンネル一括変更API
             app.MapPost("/api/batch/channel", async (BatchChannelRequest req) => {
                 lock (Globals.Lock)
                 {
@@ -72,7 +73,7 @@ namespace TToDo
                         return Results.BadRequest(new { message = "指定されたサーバーまたはチャンネルが見つかりません。Botが参加しているか確認してください。" });
                     }
 
-                    // 変更点: !t.IsForgotten だけチェックし、CompletedAtのチェックを外しました
+                    // 完了・未完了問わず、対象ユーザーの非アーカイブタスクを変更
                     var targets = Globals.AllTasks.Where(t => t.UserId == req.UserId && !t.IsForgotten);
                     foreach (var t in targets)
                     {
@@ -92,6 +93,7 @@ namespace TToDo
                 return Results.Ok();
             });
 
+            // 既存API
             app.MapPost("/api/done", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = t.CompletedAt == null ? Globals.GetJstNow() : null; t.IsSnoozed = false; Globals.SaveData(); } } return Results.Ok(); });
             app.MapPost("/api/archive", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = true; Globals.SaveData(); } } return Results.Ok(); });
             app.MapPost("/api/restore", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });
