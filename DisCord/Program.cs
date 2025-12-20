@@ -19,9 +19,14 @@ namespace TToDo
             Globals.LoadConfiguration(builder.Configuration);
             Globals.LoadData();
 
+            // (前略)
             builder.Logging.ClearProviders();
-            builder.WebHost.UseUrls(Globals.WebUrl);
+
+            // ★変更: 内部で動かすURL (BindUrl) を使用
+            builder.WebHost.UseUrls(Globals.BindUrl);
+
             var app = builder.Build();
+            // (後略)
 
             app.UseFileServer();
 

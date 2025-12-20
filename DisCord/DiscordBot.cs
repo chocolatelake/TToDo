@@ -79,7 +79,8 @@ namespace TToDo
             // 2. Webページ
             if (arg1.StartsWith("web", StringComparison.OrdinalIgnoreCase))
             {
-                await message.Channel.SendMessageAsync($"🌍 **TToDo Board:**\n{Globals.WebUrl}");
+                // ★変更: 公開用のURLを表示
+                await message.Channel.SendMessageAsync($"🌍 **TToDo Board:**\n{Globals.PublicUrl}");
                 return;
             }
 
@@ -112,8 +113,8 @@ namespace TToDo
         private async Task ShowHelp(ISocketMessageChannel c)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("📖 **TToDo Help**");
-            sb.AppendLine($"Web Board: {Globals.WebUrl}");
+            sb.AppendLine("📖 **TToDo Help**"); 
+            sb.AppendLine($"Web Board: {Globals.PublicUrl}");
             sb.AppendLine("");
             sb.AppendLine("`!ttodo report today`"); // ★変更
             sb.AppendLine("今日の完了タスク(日報)を表示します。");
