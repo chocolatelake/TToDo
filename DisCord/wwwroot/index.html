@@ -18,6 +18,8 @@
             <div class="header-controls">
                 <button class="btn-sort" @click="openCreateModal" style="color:var(--primary-color); border-color:var(--primary-color);">＋ 新規タスク</button>
                 <span class="divider">|</span>
+                <button class="btn-sort" @click="openReportModal">📋 日報作成</button>
+                <span class="divider">|</span>
                 <button class="btn-sort" @click="showFilterMenu = !showFilterMenu">🔍 絞り込み</button>
                 <span class="divider">|</span>
                 <button v-if="userId" class="btn-sort" @click="openBatchChannelModal">📡 送信先一括</button>
@@ -164,6 +166,46 @@
             </div>
         </div>
 
+        <div v-if="showReportModal" class="modal-overlay" @click.self="showReportModal = false">
+            <div class="modal" style="max-width: 500px;">
+                <h3>📋 日報抽出</h3>
+
+                <div class="form-group">
+                    <label>対象ユーザー</label>
+                    <select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview">
+                        <option v-for="u in uniqueUsers" :value="u">{{ u }}</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>プレビュー (コピー可)</label>
+                    <textarea class="form-control" rows="6" readonly>{{ reportPreview }}</textarea>
+                    <button class="btn-icon-small" @click="copyReport" style="margin-top:5px;">📋 コピー</button>
+                </div>
+
+                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+
+                <div class="form-group">
+                    <label>Discordへ送信</label>
+                    <div class="row">
+                        <select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''">
+                            <option value="">サーバー選択</option>
+                            <option v-for="g in existingGuilds" :value="g">{{ g }}</option>
+                        </select>
+                        <select class="form-control" v-model="reportForm.channelName">
+                            <option value="">チャンネル選択</option>
+                            <option v-for="c in getChannelsForGuild(reportForm.guildName)" :value="c">{{ c }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-cancel" @click="showReportModal = false">閉じる</button>
+                    <button class="btn btn-save" @click="sendReport">📤 送信</button>
+                </div>
+            </div>
+        </div>
+
         <div v-if="showBatchModal" class="modal-overlay" @click.self="showBatchModal = false">
             <div class="modal" style="max-width: 450px;">
                 <h3>📡 送信先の一括変更</h3>
@@ -199,6 +241,7 @@
                     tasks: [], loading: true, editForm: null, isCreating: false,
                     sortMode: 'priority', userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
+                    showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '' }, reportPreview: '',
                     showFilterMenu: false, filterUsers: [], filterChannels: []
                 }
             },
@@ -251,7 +294,7 @@
             },
             methods: {
                 async fetchTasks() {
-                    if (this.editForm || this.showBatchModal) return;
+                    if (this.editForm || this.showBatchModal || this.showReportModal) return;
                     try { const r = await fetch('/api/tasks'); this.tasks = await r.json(); this.loading = false; } catch { }
                 },
                 getChannelsForGuild(guildName) {
@@ -339,6 +382,64 @@
 
                     this.editForm = null;
                     this.fetchTasks();
+                },
+
+                // ★追加: 日報関連
+                openReportModal() {
+                    // 初期ターゲット: 絞り込み中ならそのユーザー、自分がいれば自分、いなければリストの先頭
+                    let target = '';
+                    if (this.filterUsers.length === 1) target = this.filterUsers[0];
+                    else if (this.myUserName) target = this.myUserName;
+                    else if (this.uniqueUsers.length > 0) target = this.uniqueUsers[0];
+
+                    this.reportForm = {
+                        targetUser: target,
+                        guildName: '',
+                        channelName: ''
+                    };
+                    this.updateReportPreview();
+                    this.showReportModal = true;
+                },
+                updateReportPreview() {
+                    const u = this.reportForm.targetUser;
+                    if (!u) { this.reportPreview = '(ユーザーを選択してください)'; return; }
+
+                    // 今日の0時以降に完了したタスクを抽出
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    const completed = this.tasks
+                        .filter(t => t.userName === u && t.completedAt && new Date(t.completedAt) >= today)
+                        .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
+
+                    if (completed.length === 0) {
+                        this.reportPreview = `📭 Daily Report: ${u}\n本日の完了タスクはありません。`;
+                    } else {
+                        const lines = completed.map(t => `・[${this.formatTime(t.completedAt)}] ${t.content}`);
+                        this.reportPreview = `📊 Daily Report: ${u}\n本日 ${completed.length}件 完了！\n\n` + lines.join('\n');
+                    }
+                },
+                copyReport() {
+                    navigator.clipboard.writeText(this.reportPreview);
+                    alert('コピーしました！');
+                },
+                async sendReport() {
+                    if (!this.reportForm.targetUser || !this.reportForm.guildName || !this.reportForm.channelName) {
+                        alert('送信先を選択してください'); return;
+                    }
+                    if (!confirm('Discordに送信しますか？')) return;
+
+                    await fetch('/api/report/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userName: this.reportForm.targetUser,
+                            guildName: this.reportForm.guildName,
+                            channelName: this.reportForm.channelName
+                        })
+                    });
+                    this.showReportModal = false;
+                    alert('送信しました！');
                 },
 
                 onDragStart(evt, t) { evt.dataTransfer.dropEffect = 'move'; evt.dataTransfer.effectAllowed = 'move'; evt.dataTransfer.setData('taskId', t.id); },

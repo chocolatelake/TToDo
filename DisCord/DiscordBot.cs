@@ -14,7 +14,6 @@ namespace TToDo
     {
         private DiscordSocketClient _client;
 
-        // Null許容型に戻します
         public static DiscordBot? Instance { get; private set; }
         public DiscordSocketClient Client => _client;
 
@@ -24,7 +23,6 @@ namespace TToDo
         public DiscordBot()
         {
             Instance = this;
-            // ★修正: 余計な権限(GuildMembers)を削除し、元の設定に戻しました
             var config = new DiscordSocketConfig
             {
                 GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
@@ -44,6 +42,57 @@ namespace TToDo
             if (guild == null) return null;
             var channel = guild.TextChannels.FirstOrDefault(c => c.Name == channelName);
             return channel?.Id;
+        }
+
+        public string ResolveAvatarUrl(string userName)
+        {
+            if (_client == null || _client.ConnectionState != ConnectionState.Connected || string.IsNullOrEmpty(userName)) return "";
+            foreach (var guild in _client.Guilds)
+            {
+                var user = guild.Users.FirstOrDefault(u => u.Username == userName || u.Nickname == userName || u.DisplayName == userName);
+                if (user != null) return user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
+            }
+            return "";
+        }
+
+        // ★追加: 手動日報送信
+        public async Task<bool> SendManualReport(string userName, string guildName, string channelName)
+        {
+            var targetChannelId = ResolveChannelId(guildName, channelName);
+            if (targetChannelId == null) return false;
+
+            var channel = _client.GetChannel(targetChannelId.Value) as ISocketMessageChannel;
+            if (channel == null) return false;
+
+            var today = Globals.GetJstNow().Date;
+            List<TaskItem> completedTasks;
+
+            lock (Globals.Lock)
+            {
+                completedTasks = Globals.AllTasks
+                    .Where(t => t.UserName == userName && t.CompletedAt != null && t.CompletedAt >= today)
+                    .OrderBy(t => t.CompletedAt)
+                    .ToList();
+            }
+
+            if (completedTasks.Count == 0)
+            {
+                await channel.SendMessageAsync($"📭 **Daily Report: {userName}**\n本日の完了タスクはありません。");
+                return true;
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"📊 **Daily Report: {userName}** ({Globals.GetJstNow():yyyy/MM/dd})");
+            sb.AppendLine($"本日 **{completedTasks.Count}件** のタスクを完了しました！");
+            sb.AppendLine("```");
+            foreach (var t in completedTasks)
+            {
+                sb.AppendLine($"・[{t.CompletedAt?.ToString("HH:mm")}] {t.Content}");
+            }
+            sb.AppendLine("```");
+
+            await channel.SendMessageAsync(sb.ToString());
+            return true;
         }
 
         public async Task StartAsync()
