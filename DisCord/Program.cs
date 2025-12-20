@@ -19,42 +19,22 @@ namespace TToDo
             Globals.LoadConfiguration(builder.Configuration);
             Globals.LoadData();
 
-            // (前略)
             builder.Logging.ClearProviders();
-
-            // ★変更: 内部で動かすURL (BindUrl) を使用
             builder.WebHost.UseUrls(Globals.BindUrl);
 
             var app = builder.Build();
-            // (後略)
-
             app.UseFileServer();
 
             // --- Web API Endpoints ---
 
-            app.MapGet("/api/tasks", (HttpContext ctx) => {
-                lock (Globals.Lock)
-                {
-                    return Results.Json(Globals.AllTasks);
-                }
-            });
-
-            app.MapGet("/api/config", () => {
-                lock (Globals.Lock)
-                {
-                    return Results.Json(Globals.Configs);
-                }
-            });
+            app.MapGet("/api/tasks", (HttpContext ctx) => { lock (Globals.Lock) { return Results.Json(Globals.AllTasks); } });
+            app.MapGet("/api/config", () => { lock (Globals.Lock) { return Results.Json(Globals.Configs); } });
 
             app.MapPost("/api/config", (UserConfig req) => {
                 lock (Globals.Lock)
                 {
                     var c = Globals.Configs.FirstOrDefault(x => x.UserId == req.UserId);
-                    if (c == null)
-                    {
-                        c = new UserConfig { UserId = req.UserId };
-                        Globals.Configs.Add(c);
-                    }
+                    if (c == null) { c = new UserConfig { UserId = req.UserId }; Globals.Configs.Add(c); }
                     c.UserName = req.UserName;
                     c.ReportTime = req.ReportTime;
                     c.TargetGuild = req.TargetGuild;
@@ -64,7 +44,6 @@ namespace TToDo
                 return Results.Ok();
             });
 
-            // ★修正: 新しいReportRequestを受け取る
             app.MapPost("/api/report/send", async (ReportRequest req) => {
                 if (DiscordBot.Instance == null) return Results.BadRequest();
                 bool success = await DiscordBot.Instance.SendManualReport(req);
@@ -76,7 +55,7 @@ namespace TToDo
                 {
                     if (string.IsNullOrWhiteSpace(item.Content)) return Results.BadRequest();
                     item.Id = Guid.NewGuid().ToString("N");
-                    item.UserName = "Webからの追加";
+                    item.UserName = "Webで作成";
 
                     if (!string.IsNullOrEmpty(item.GuildName) && !string.IsNullOrEmpty(item.ChannelName) && DiscordBot.Instance != null)
                     {
@@ -84,10 +63,23 @@ namespace TToDo
                         if (newId.HasValue) item.ChannelId = newId.Value;
                     }
 
-                    if (!string.IsNullOrEmpty(item.Assignee) && DiscordBot.Instance != null)
+                    // ★修正: 新規作成時のアイコン取得 (DBキャッシュ対応)
+                    if (!string.IsNullOrEmpty(item.Assignee))
                     {
-                        var avatar = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
-                        if (!string.IsNullOrEmpty(avatar)) item.AvatarUrl = avatar;
+                        string newUrl = "";
+                        // 1. Discordから取得を試みる
+                        if (DiscordBot.Instance != null) newUrl = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
+
+                        // 2. 失敗したら、既存タスクから同じ名前の人のアイコンを探す
+                        if (string.IsNullOrEmpty(newUrl))
+                        {
+                            var existing = Globals.AllTasks.FirstOrDefault(x =>
+                                (x.Assignee == item.Assignee || x.UserName == item.Assignee)
+                                && !string.IsNullOrEmpty(x.AvatarUrl));
+                            if (existing != null) newUrl = existing.AvatarUrl;
+                        }
+
+                        if (!string.IsNullOrEmpty(newUrl)) item.AvatarUrl = newUrl;
                     }
 
                     Globals.AllTasks.Add(item);
@@ -108,10 +100,40 @@ namespace TToDo
                             if (newId.HasValue) t.ChannelId = newId.Value;
                         }
 
-                        if (t.Assignee != item.Assignee && !string.IsNullOrEmpty(item.Assignee) && DiscordBot.Instance != null)
+                        // ★修正: 更新時のアイコン取得 (DBキャッシュ対応)
+                        bool assigneeChanged = t.Assignee != item.Assignee;
+
+                        // ターゲットとなる名前を決定 (変更があった場合は新しい担当者 or 外れたら作成者)
+                        string targetUser = assigneeChanged
+                            ? (!string.IsNullOrEmpty(item.Assignee) ? item.Assignee : t.UserName)
+                            : t.Assignee;
+
+                        // 担当者が変わった、または 現在アイコンがなくて担当者がいる場合
+                        if (assigneeChanged || (!string.IsNullOrEmpty(targetUser) && string.IsNullOrEmpty(t.AvatarUrl)))
                         {
-                            var avatar = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
-                            if (!string.IsNullOrEmpty(avatar)) t.AvatarUrl = avatar;
+                            string newUrl = "";
+
+                            // 1. Discordから取得を試みる
+                            if (DiscordBot.Instance != null)
+                            {
+                                newUrl = DiscordBot.Instance.ResolveAvatarUrl(targetUser);
+                            }
+
+                            // 2. 失敗したら、既存のタスクDBから同じ名前の人のアイコンを探す (DBキャッシュ利用)
+                            if (string.IsNullOrEmpty(newUrl))
+                            {
+                                var existing = Globals.AllTasks.FirstOrDefault(x =>
+                                    (x.Assignee == targetUser || x.UserName == targetUser)
+                                    && !string.IsNullOrEmpty(x.AvatarUrl));
+                                if (existing != null) newUrl = existing.AvatarUrl;
+                            }
+
+                            // 変更があった場合、または有効なURLが見つかった場合にセット
+                            // (担当者を外してWeb作成者に戻った場合などは newUrl が空になるが、それで正解なのでセットする)
+                            if (assigneeChanged || !string.IsNullOrEmpty(newUrl))
+                            {
+                                t.AvatarUrl = newUrl;
+                            }
                         }
 
                         t.Content = item.Content;
@@ -132,31 +154,14 @@ namespace TToDo
                 {
                     ulong? newChannelId = DiscordBot.Instance?.ResolveChannelId(req.GuildName, req.ChannelName);
                     if (newChannelId == null) return Results.BadRequest(new { message = "指定されたサーバーまたはチャンネルが見つかりません。" });
-
                     var targets = Globals.AllTasks.Where(t => t.UserId == req.UserId && !t.IsForgotten);
-                    foreach (var t in targets)
-                    {
-                        t.GuildName = req.GuildName;
-                        t.ChannelName = req.ChannelName;
-                        t.ChannelId = newChannelId.Value;
-                    }
+                    foreach (var t in targets) { t.GuildName = req.GuildName; t.ChannelName = req.ChannelName; t.ChannelId = newChannelId.Value; }
                     Globals.SaveData();
                 }
                 return Results.Ok();
             });
 
-            app.MapPost("/api/archive/cleanup", (CleanupRequest req) => {
-                lock (Globals.Lock)
-                {
-                    if (req.TargetUserNames != null && req.TargetUserNames.Count > 0)
-                        Globals.AllTasks.RemoveAll(t => t.IsForgotten && req.TargetUserNames.Contains(t.UserName));
-                    else
-                        Globals.AllTasks.RemoveAll(t => t.IsForgotten);
-                    Globals.SaveData();
-                }
-                return Results.Ok();
-            });
-
+            app.MapPost("/api/archive/cleanup", (CleanupRequest req) => { lock (Globals.Lock) { if (req.TargetUserNames != null && req.TargetUserNames.Count > 0) Globals.AllTasks.RemoveAll(t => t.IsForgotten && req.TargetUserNames.Contains(t.UserName)); else Globals.AllTasks.RemoveAll(t => t.IsForgotten); Globals.SaveData(); } return Results.Ok(); });
             app.MapPost("/api/done", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = t.CompletedAt == null ? Globals.GetJstNow() : null; t.IsSnoozed = false; Globals.SaveData(); } } return Results.Ok(); });
             app.MapPost("/api/archive", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = true; Globals.SaveData(); } } return Results.Ok(); });
             app.MapPost("/api/restore", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });
@@ -165,7 +170,6 @@ namespace TToDo
             var bot = new DiscordBot();
             await bot.StartAsync();
 
-            // 公開用URLを表示するように変更
             System.Console.WriteLine($"\n🚀 Dashboard is running at: {Globals.PublicUrl}\n");
             await app.RunAsync();
         }
