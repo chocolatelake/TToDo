@@ -15,9 +15,11 @@ body {
     color: var(--text-color);
     margin: 0;
     padding: 0;
+    /* 画面の高さいっぱいに固定 */
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
-    overflow: hidden; /* Prevent body scroll */
+    overflow: hidden;
     display: flex;
     flex-direction: column;
 }
@@ -30,6 +32,7 @@ body {
     padding: 15px;
     height: 100%;
     box-sizing: border-box;
+    padding-bottom: 0;
     overflow: hidden;
 }
 
@@ -130,27 +133,31 @@ h1 {
 /* --- Kanban Board (Main Area) --- */
 .kanban-board {
     display: flex;
-    flex-direction: row; /* Always horizontal */
+    flex-direction: row;
     gap: 15px;
     flex: 1;
-    overflow-x: auto; /* Horizontal scroll allowed */
-    overflow-y: hidden; /* No vertical scroll on board itself */
-    align-items: flex-start;
-    /* Scroll Snapping for Mobile */
+    /* ★修正: 親要素（app-container）の残りの高さを埋める */
+    height: auto;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* ★修正: align-items: flex-start を削除し、デフォルトの stretch にする */
+    /* これで子要素(.column)が親の高さ(画面下端)まで強制的に伸びます */
+
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 5px; /* Space for scrollbar */
+    padding-bottom: 10px;
 }
 
 /* Columns */
 .column {
-    /* PC Default: Share width equally */
     flex: 1;
     min-width: 300px;
     background: var(--column-bg);
     border-radius: 12px;
     display: flex;
     flex-direction: column;
+    /* ★修正: 親要素(.kanban-board)に合わせて100%まで伸びる */
     height: 100%;
     max-height: 100%;
     box-sizing: border-box;
@@ -192,8 +199,10 @@ h1 {
 
 /* Task List Area */
 .task-container {
+    /* ★修正: カラム内で残りの高さを全て埋める */
+    /* これにより、タスクがない下部の空白もこのコンテナの領域になります */
     flex: 1;
-    overflow-y: auto; /* Scroll vertically inside column */
+    overflow-y: auto;
     padding: 10px;
     display: flex;
     flex-direction: column;
@@ -416,22 +425,21 @@ h1 {
 }
 
 /* --- Mobile Optimization (Vertical Orientation) --- */
-/* 幅が狭いデバイスでは、横スクロールレイアウトにする */
 @media (max-width: 768px) {
     .kanban-board {
         gap: 10px;
-        padding-right: 15px; /* End padding */
+        padding-right: 15px;
+        height: auto;
     }
 
     .column {
-        /* Force fixed width on mobile to enable scroll */
         flex: 0 0 85vw; /* 85% of viewport width */
         min-width: 300px;
         height: 100%;
     }
 
     .actions {
-        opacity: 1; /* Always show actions on touch devices */
+        opacity: 1;
     }
 
     header {

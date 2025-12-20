@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace TToDo
@@ -23,12 +24,15 @@ namespace TToDo
             Instance = this;
             var config = new DiscordSocketConfig
             {
+                // ★修正: GuildMembers を削除し、標準の権限に戻しました
                 GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
             };
             _client = new DiscordSocketClient(config);
             _client.Log += msg => { Console.WriteLine($"[Bot] {msg}"); return Task.CompletedTask; };
             _client.MessageReceived += MessageReceivedAsync;
             _client.SelectMenuExecuted += SelectMenuHandler;
+
+            // ★修正: 強制ダウンロード処理を削除しました
         }
 
         public ulong? ResolveChannelId(string guildName, string channelName)
@@ -45,7 +49,12 @@ namespace TToDo
             if (_client == null || _client.ConnectionState != ConnectionState.Connected || string.IsNullOrEmpty(userName)) return "";
             foreach (var guild in _client.Guilds)
             {
-                var user = guild.Users.FirstOrDefault(u => u.Username == userName || u.Nickname == userName || u.DisplayName == userName);
+                // キャッシュされている範囲でユーザーを検索
+                var user = guild.Users.FirstOrDefault(u =>
+                    (u.Username != null && u.Username == userName) ||
+                    (u.Nickname != null && u.Nickname == userName) ||
+                    (u.DisplayName != null && u.DisplayName == userName));
+
                 if (user != null) return user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
             }
             return "";
@@ -63,27 +72,33 @@ namespace TToDo
         {
             if (message.Author.IsBot || string.IsNullOrWhiteSpace(message.Content)) return;
             string content = message.Content.Trim();
-            if (!content.StartsWith("!ttodo")) return;
+            string lower = content.ToLowerInvariant();
 
             string arg1 = "";
-            var parts = content.Split(new[] { ' ', '　', '\t', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length > 1) arg1 = parts[1].Trim();
+            if (lower.StartsWith("!ttodolist")) arg1 = "list";
+            else if (lower.StartsWith("!ttodohelp")) arg1 = "help";
+            else if (lower.StartsWith("!ttodoweb")) arg1 = "web";
+            else if (lower.StartsWith("!ttodotoday")) arg1 = "report today";
+            else if (lower.StartsWith("!ttodoyesterday")) arg1 = "report yesterday";
+            else if (content.StartsWith("!ttodo"))
+            {
+                var parts = content.Split(new[] { ' ', '　', '\t', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 1) arg1 = parts[1].Trim();
+            }
+            else return;
 
-            // 1. ヘルプ
             if (arg1.StartsWith("help", StringComparison.OrdinalIgnoreCase))
             {
                 await ShowHelp(message.Channel);
                 return;
             }
 
-            // 2. Webページ
             if (arg1.StartsWith("web", StringComparison.OrdinalIgnoreCase))
             {
                 await message.Channel.SendMessageAsync($"🌍 **TToDo Board:**\n{Globals.PublicUrl}");
                 return;
             }
 
-            // 3. 日報 (report today / report yesterday のみ)
             if (arg1.Equals("report today", StringComparison.OrdinalIgnoreCase) ||
                 arg1.Equals("report yesterday", StringComparison.OrdinalIgnoreCase))
             {
@@ -91,17 +106,15 @@ namespace TToDo
                 return;
             }
 
-            // 4. タスク一覧
             if (arg1.StartsWith("list", StringComparison.OrdinalIgnoreCase))
             {
                 await ShowCompactList(message.Channel, message.Author);
                 return;
             }
 
-            // 5. タスク追加 (それ以外の場合)
             if (!string.IsNullOrWhiteSpace(arg1))
             {
-                await AddNewTasks(message.Channel, message.Author, arg1);
+                await AddNewTasks(message.Channel, message.Author, arg1, message);
             }
         }
 
@@ -113,19 +126,18 @@ namespace TToDo
             sb.AppendLine($"Web Board: {Globals.PublicUrl}");
             sb.AppendLine("");
             sb.AppendLine("`!ttodo [タスク内容]`");
-            sb.AppendLine("タスクを追加します。");
+            sb.AppendLine("タスクを追加します。メンションをつけると担当者を指定できます。");
             sb.AppendLine("・`!` 先頭で「優先度：高」");
             sb.AppendLine("・`?` 先頭で「優先度：低」");
             sb.AppendLine("・`#タグ名` でタグ付け");
             sb.AppendLine("");
-            // ★追加: 非タスク化文字の説明
             sb.AppendLine("**非タスク化文字 (行頭にあると直前のタスクの続きになります):**");
             sb.AppendLine("`スペース` `タブ` `→` `：` `:` `・` `※` `>` `-` `+` `*` `■` `□` `●` `○`");
             sb.AppendLine("");
-            sb.AppendLine("`!ttodo list`");
+            sb.AppendLine("`!ttodolist`");
             sb.AppendLine("自分の未完了タスク一覧を表示します。");
             sb.AppendLine("");
-            sb.AppendLine("`!ttodo report today`");
+            sb.AppendLine("`!ttodotoday`");
             sb.AppendLine("今日の完了タスク(日報)を表示します。");
             sb.AppendLine("");
             sb.AppendLine("`!ttodo web`");
@@ -135,9 +147,21 @@ namespace TToDo
         }
 
         // --- 機能実装: タスク追加 ---
-        private async Task AddNewTasks(ISocketMessageChannel channel, SocketUser user, string rawText)
+        private async Task AddNewTasks(ISocketMessageChannel channel, SocketUser user, string rawText, SocketMessage message)
         {
+            string assignee = user.Username;
+            // Discordから来たメッセージなので、ここで確実にアイコンを取得できます
             string avatar = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
+
+            var mentionedUser = message.MentionedUsers.FirstOrDefault(u => !u.IsBot);
+            if (mentionedUser != null)
+            {
+                assignee = mentionedUser.Username;
+                // メンションされたユーザーのアイコンもここで確実に取得できます
+                avatar = mentionedUser.GetAvatarUrl() ?? mentionedUser.GetDefaultAvatarUrl();
+                rawText = rawText.Replace(mentionedUser.Mention, "").Replace($"<@!{mentionedUser.Id}>", "").Trim();
+            }
+
             string guildName = "DM";
             string channelName = channel.Name;
             if (channel is SocketGuildChannel guildChannel) guildName = guildChannel.Guild.Name;
@@ -180,19 +204,18 @@ namespace TToDo
                 {
                     if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
 
-                    // 優先度判定ロジック (3段階)
-                    int prio = 0; // 0: 普通
+                    int prio = 0;
                     string content = trimLine;
 
                     if (content.StartsWith("!") || content.StartsWith("！"))
                     {
-                        prio = 1; // 1: 高い
+                        prio = 1;
                         content = content.Substring(1);
-                        if (content.StartsWith("!") || content.StartsWith("！")) content = content.Substring(1); // "!!" も許容して1文字削る
+                        if (content.StartsWith("!") || content.StartsWith("！")) content = content.Substring(1);
                     }
                     else if (content.StartsWith("?") || content.StartsWith("？"))
                     {
-                        prio = -1; // -1: 低い
+                        prio = -1;
                         content = content.Substring(1);
                         if (content.StartsWith("?") || content.StartsWith("？")) content = content.Substring(1);
                     }
@@ -206,12 +229,12 @@ namespace TToDo
                             UserId = user.Id,
                             UserName = user.Username,
                             AvatarUrl = avatar,
-                            Assignee = user.Username,
+                            Assignee = assignee,
                             GuildName = guildName,
                             ChannelName = channelName,
                             Content = content,
                             Priority = prio,
-                            Difficulty = 0, // Difficultyは使わないので0固定
+                            Difficulty = 0,
                             Tags = new List<string>(currentTags)
                         };
                     }
@@ -225,12 +248,19 @@ namespace TToDo
         // --- 機能実装: リスト表示 ---
         private (string Text, MessageComponent? Components) BuildListView(ulong userId, ulong channelId)
         {
+            var user = _client.GetUser(userId);
+            string username = user?.Username ?? "";
             var today = Globals.GetJstNow().Date;
+
             List<TaskItem> visibleTasks;
             lock (Globals.Lock)
             {
                 visibleTasks = Globals.AllTasks
-                    .Where(t => t.UserId == userId && t.ChannelId == channelId && !t.IsForgotten && (t.CompletedAt == null || t.CompletedAt >= today))
+                    .Where(t =>
+                        !t.IsForgotten &&
+                        (t.CompletedAt == null || t.CompletedAt >= today) &&
+                        (!string.IsNullOrEmpty(t.Assignee) && t.Assignee == username)
+                    )
                     .OrderByDescending(t => GetSortScore(t))
                     .ToList();
             }
@@ -335,7 +365,6 @@ namespace TToDo
             catch { }
         }
 
-        // --- 機能実装: 日報表示 ---
         private async Task ShowReport(ISocketMessageChannel c, SocketUser u, string args)
         {
             var now = Globals.GetJstNow();
@@ -360,7 +389,9 @@ namespace TToDo
             lock (Globals.Lock)
             {
                 l = Globals.AllTasks
-                    .Where(x => x.UserId == u.Id && x.CompletedAt != null && x.CompletedAt >= start && x.CompletedAt < end)
+                    .Where(x =>
+                        (!string.IsNullOrEmpty(x.Assignee) && x.Assignee == u.Username)
+                        && x.CompletedAt != null && x.CompletedAt >= start && x.CompletedAt < end)
                     .OrderBy(x => x.CompletedAt)
                     .ToList();
             }
@@ -376,7 +407,6 @@ namespace TToDo
             await c.SendMessageAsync(sb.ToString());
         }
 
-        // --- 機能実装: 自動日報 & 手動日報送信 ---
         public async Task<bool> SendManualReport(ReportRequest req)
         {
             var targetChannelId = ResolveChannelId(req.TargetGuild, req.TargetChannel);
@@ -459,7 +489,6 @@ namespace TToDo
                 return;
             }
 
-            // 設定がない場合は従来通り発生元へ送信
             DateTime reportStart = (now.Hour == 0 && now.Minute < 5) ? now.Date.AddDays(-1) : now.Date;
             List<TaskItem> reportTasks;
             lock (Globals.Lock) { reportTasks = Globals.AllTasks.Where(t => t.UserId == userId && t.CompletedAt != null && t.CompletedAt >= reportStart).ToList(); }
@@ -512,21 +541,20 @@ namespace TToDo
             }
         }
 
-        // ソートスコア（高 > 普通 > 低）
         private int GetSortScore(TaskItem t)
         {
             if (t.CompletedAt != null) return -10;
             if (t.IsSnoozed) return -1;
 
-            if (t.Priority == 1) return 10; // 高
-            if (t.Priority == 0) return 5;  // 普通
-            return 1; // 低 (-1)
+            if (t.Priority == 1) return 10;
+            if (t.Priority == 0) return 5;
+            return 1;
         }
 
-        // ラベル表示
         private string GetPriorityLabel(int p)
         {
             if (p == 1) return "高";
+            if (p == 0) return "中";
             if (p == -1) return "低";
             return "";
         }

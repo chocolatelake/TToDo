@@ -36,6 +36,65 @@
             gap: 8px;
             margin-top: 8px;
         }
+
+        .btn-move-archive, .btn-move-active, .btn-move-done {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            margin-right: 2px;
+        }
+
+            .btn-move-archive:hover {
+                background: #fee;
+                color: #c00;
+                border-color: #fcc;
+            }
+
+            .btn-move-done:hover {
+                background: #efe;
+                color: #080;
+                border-color: #cfc;
+            }
+
+            .btn-move-active:hover {
+                background: #eef;
+                color: #00c;
+                border-color: #ccf;
+            }
+
+        .btn-export {
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+            opacity: 0.6;
+        }
+
+            .btn-export:hover {
+                opacity: 1;
+                transform: scale(1.1);
+            }
+
+        .filter-avatar {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            vertical-align: middle;
+            margin-right: 4px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
@@ -49,6 +108,7 @@
                 <button class="btn-sort" @click="openCreateModal" style="color:var(--primary-color); border-color:var(--primary-color);">＋ 新規タスク</button>
                 <span class="divider">|</span>
                 <button class="btn-sort" @click="openReportModal">📋 日報作成</button>
+                <button class="btn-sort" @click="exportList('all')">📄 リスト出力</button>
                 <button class="btn-sort" @click="openConfigModal">⚙️ 設定</button>
                 <span class="divider">|</span>
                 <button class="btn-sort" @click="showFilterMenu = !showFilterMenu">🔍 絞り込み</button>
@@ -62,10 +122,36 @@
 
         <div v-if="showFilterMenu" class="filter-panel">
             <div class="filter-section">
-                <span class="filter-title">ユーザー:</span>
-                <button v-for="u in uniqueUsers" :key="u" class="chip" :class="{selected: filterUsers.includes(u)}" @click="toggleFilterUser(u)">{{ u }}</button>
+                <span class="filter-title">担当者:</span>
+                <button v-for="u in uniqueUsers" :key="u" class="chip" :class="{selected: filterUsers.includes(u)}" @click="toggleFilterUser(u)">
+                    <img v-if="getAvatar(u)" :src="getAvatar(u)" class="filter-avatar">
+                    {{ u }}
+                </button>
                 <button class="chip" @click="filterUsers = []" v-if="filterUsers.length > 0">クリア</button>
             </div>
+
+            <div class="filter-section">
+                <span class="filter-title">タグ:</span>
+                <button v-for="t in uniqueTags" :key="t" class="chip" :class="{selected: filterTags.includes(t)}" @click="toggleFilterTag(t)">
+                    {{ t === '(タグ未設定)' ? t : '#' + t }}
+                </button>
+                <button class="chip" @click="filterTags = []" v-if="filterTags.length > 0">クリア</button>
+            </div>
+
+            <div class="filter-section">
+                <span class="filter-title">優先度:</span>
+                <button class="chip" :class="{selected: filterPriorities.includes(1)}" @click="toggleFilterPriority(1)">高</button>
+                <button class="chip" :class="{selected: filterPriorities.includes(0)}" @click="toggleFilterPriority(0)">中</button>
+                <button class="chip" :class="{selected: filterPriorities.includes(-1)}" @click="toggleFilterPriority(-1)">低</button>
+                <button class="chip" @click="filterPriorities = []" v-if="filterPriorities.length > 0">クリア</button>
+            </div>
+
+            <div class="filter-section">
+                <span class="filter-title">サーバー:</span>
+                <button v-for="g in uniqueGuilds" :key="g" class="chip" :class="{selected: filterGuilds.includes(g)}" @click="toggleFilterGuild(g)">{{ g }}</button>
+                <button class="chip" @click="filterGuilds = []" v-if="filterGuilds.length > 0">クリア</button>
+            </div>
+
             <div class="filter-section">
                 <span class="filter-title">チャンネル:</span>
                 <button v-for="c in uniqueChannels" :key="c" class="chip" :class="{selected: filterChannels.includes(c)}" @click="toggleFilterChannel(c)">{{ c }}</button>
@@ -76,39 +162,46 @@
         <div v-if="loading" style="text-align:center">Loading...</div>
 
         <div v-else class="kanban-board">
-            <div class="column col-todo" @dragover.prevent @drop="onDrop($event, 'active')">
-                <div class="column-header">🚀 進行中 <span class="count">{{ tasksActive.length }}</span></div>
-                <div class="task-container">
+            <div class="column col-todo" @dragover="onDragOver" @drop="onDrop($event, 'active')">
+                <div class="column-header">
+                    <span>🚀 進行中 <span class="count">{{ tasksActive.length }}</span></span>
+                    <button class="btn-export" @click="exportList('active')" title="このリストのみコピー">📄</button>
+                </div>
+                <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'active')">
                     <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || task.userName">
-                            <span v-else class="user-badge">{{ task.assignee || task.userName }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
+                            <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
                         </div>
                         <div class="task-content">
                             <div class="tags">
                                 <span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span>
                                 <span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
                                 <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
-                                <span v-if="task.priority !== 0" class="tag prio-tag">{{ getPrioLabel(task) }}</span>
+                                <span class="tag prio-tag">{{ getPrioLabel(task) }}</span>
                             </div>
                             <div class="text">{{ task.content }}</div>
                         </div>
                         <div class="actions">
+                            <button class="btn-move-archive" @click.stop="moveToArchive(task)" title="アーカイブへ">🗑️</button>
                             <button class="btn-icon btn-check" @click.stop="moveToDone(task)">✔</button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="column col-done" @dragover.prevent @drop="onDrop($event, 'done')">
-                <div class="column-header">✅ 完了 <span class="count">{{ tasksDone.length }}</span></div>
-                <div class="task-container">
+            <div class="column col-done" @dragover="onDragOver" @drop="onDrop($event, 'done')">
+                <div class="column-header">
+                    <span>✅ 完了 <span class="count">{{ tasksDone.length }}</span></span>
+                    <button class="btn-export" @click="exportList('done')" title="このリストのみコピー">📄</button>
+                </div>
+                <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'done')">
                     <div v-for="task in tasksDone" :key="task.id" class="card done-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || task.userName">
-                            <span v-else class="user-badge">{{ task.assignee || task.userName }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
+                            <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
                         </div>
                         <div class="task-content">
                             <div class="tags">
@@ -119,33 +212,38 @@
                             <div class="text">{{ task.content }}</div>
                         </div>
                         <div class="actions">
+                            <button class="btn-move-archive" @click.stop="moveToArchive(task)" title="アーカイブへ">🗑️</button>
                             <button class="btn-icon btn-return" @click.stop="moveToActive(task)">↩️</button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="column col-archive" @dragover.prevent @drop="onDrop($event, 'archive')">
+            <div class="column col-archive" @dragover="onDragOver" @drop="onDrop($event, 'archive')">
                 <div class="column-header">
-                    <div>🗑️ アーカイブ <span class="count">{{ tasksArchive.length }}</span></div>
+                    <div>
+                        🗑️ アーカイブ <span class="count">{{ tasksArchive.length }}</span>
+                        <button class="btn-export" @click="exportList('archive')" title="このリストのみコピー">📄</button>
+                    </div>
                     <button class="btn-icon-small" @click="cleanupArchive"
                             :title="filterUsers.length > 0 ? '表示中のユーザーのアーカイブを削除' : '全ユーザーのアーカイブを削除'"
                             v-if="tasksArchive.length > 0" style="color: #cf513d;">
                         {{ filterUsers.length > 0 ? '🗑️表示分削除' : '🗑️全削除' }}
                     </button>
                 </div>
-                <div class="task-container">
+                <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'archive')">
                     <div v-for="task in tasksArchive" :key="task.id" class="card archive-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || task.userName">
-                            <span v-else class="user-badge">{{ task.assignee || task.userName }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
+                            <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
                         </div>
                         <div class="task-content">
                             <div class="text">{{ task.content }}</div>
                         </div>
                         <div class="actions">
-                            <button class="btn-icon btn-restore" @click.stop="moveToActive(task)">♻️</button>
+                            <button class="btn-move-active" @click.stop="moveToActive(task)" title="進行中へ">↩️</button>
+                            <button class="btn-move-done" @click.stop="moveToDone(task)" title="完了へ">✅</button>
                             <button class="btn-icon btn-delete" @click.stop="deleteTask(task)">💥</button>
                         </div>
                     </div>
@@ -184,7 +282,7 @@
                     <div class="tag-controls">
                         <select class="form-control" v-model="selectedExistingTag" @change="addExistingTag" style="flex:1;">
                             <option value="">既存タグから追加...</option>
-                            <option v-for="t in uniqueTags" :value="t">{{ t }}</option>
+                            <option v-for="t in uniqueTags" :value="t" v-show="t !== '(タグ未設定)'">{{ t }}</option>
                         </select>
                         <input type="text" class="form-control" v-model="newTagInput" placeholder="新規タグ..." style="flex:1;" @keydown.enter.prevent="addNewTag">
                         <button class="btn" style="background:var(--border-color); padding:0 12px;" @click="addNewTag">＋</button>
@@ -205,16 +303,25 @@
 
         <div v-if="showReportModal" class="modal-overlay" @click.self="showReportModal = false">
             <div class="modal" style="max-width: 500px;">
-                <h3>📋 日報抽出</h3>
+                <h3>📋 {{ isExportMode ? 'タスク一覧出力' : '日報抽出' }}</h3>
 
-                <div class="form-group">
+                <div v-if="isExportMode" class="form-group">
+                    <div class="chip-group">
+                        <div class="chip" :class="{selected: exportScope==='all'}" @click="changeExportScope('all')">すべて</div>
+                        <div class="chip" :class="{selected: exportScope==='active'}" @click="changeExportScope('active')">進行中</div>
+                        <div class="chip" :class="{selected: exportScope==='done'}" @click="changeExportScope('done')">完了</div>
+                        <div class="chip" :class="{selected: exportScope==='archive'}" @click="changeExportScope('archive')">アーカイブ</div>
+                    </div>
+                </div>
+
+                <div v-if="!isExportMode" class="form-group">
                     <label>対象ユーザー (担当者)</label>
                     <select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview">
                         <option v-for="u in allAssignees" :value="u">{{ u }}</option>
                     </select>
                 </div>
 
-                <div class="form-group">
+                <div v-if="!isExportMode" class="form-group">
                     <label>対象期間</label>
                     <div class="chip-group">
                         <div class="chip" :class="{selected: reportForm.targetRange==='today'}" @click="reportForm.targetRange='today'; updateReportPreview()">今日</div>
@@ -222,7 +329,7 @@
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div v-if="!isExportMode" class="form-group">
                     <label>抽出条件 (発生元)</label>
                     <div class="row">
                         <select class="form-control" v-model="reportForm.sourceGuild" @change="reportForm.sourceChannel = ''; updateReportPreview()">
@@ -238,13 +345,13 @@
 
                 <div class="form-group">
                     <label>プレビュー (コピー可)</label>
-                    <textarea class="form-control" rows="6" readonly>{{ reportPreview }}</textarea>
+                    <textarea class="form-control" rows="10" readonly>{{ reportPreview }}</textarea>
                     <button class="btn-icon-small" @click="copyReport" style="margin-top:5px;">📋 コピー</button>
                 </div>
 
-                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+                <hr v-if="!isExportMode" style="border:0; border-top:1px solid #eee; margin:15px 0;">
 
-                <div class="form-group">
+                <div v-if="!isExportMode" class="form-group">
                     <label>Discordへ送信</label>
                     <div class="row">
                         <select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select>
@@ -254,7 +361,7 @@
 
                 <div class="modal-actions">
                     <button class="btn btn-cancel" @click="showReportModal = false">閉じる</button>
-                    <button class="btn btn-save" @click="sendReport">📤 送信</button>
+                    <button v-if="!isExportMode" class="btn btn-save" @click="sendReport">📤 送信</button>
                 </div>
             </div>
         </div>
@@ -291,29 +398,69 @@
                     sortMode: 'priority', userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
+                    isExportMode: false, exportScope: 'all', // ★追加: エクスポート範囲
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
-                    showFilterMenu: false, filterUsers: [], filterChannels: [],
+                    showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [],
                     newTagInput: '', selectedExistingTag: ''
                 }
             },
             computed: {
                 allAssignees() {
-                    const fromTasks = this.tasks.map(t => t.assignee).filter(n => n);
-                    const creators = this.tasks.map(t => t.userName).filter(n => n);
-                    return [...new Set([...fromTasks, ...creators])].sort();
+                    const names = new Set();
+                    this.tasks.forEach(t => {
+                        if (t.assignee) names.add(t.assignee);
+                        if (t.userName) names.add(t.userName);
+                    });
+                    names.delete("Webで作成");
+                    return Array.from(names).sort();
                 },
-                uniqueUsers() { return [...new Set(this.tasks.map(t => t.userName).filter(n => n))].sort(); },
-                uniqueChannels() { return [...new Set(this.tasks.map(t => t.guildName + ' / ' + t.channelName).filter(n => n.length > 3))].sort(); },
+                uniqueUsers() {
+                    const list = [...this.allAssignees];
+                    if (this.tasks.some(t => !t.assignee)) {
+                        list.unshift('担当者未設定');
+                    }
+                    return list;
+                },
+                uniqueChannels() {
+                    const channels = new Set();
+                    let hasEmpty = false;
+                    this.tasks.forEach(t => {
+                        if (t.guildName && t.channelName) {
+                            channels.add(t.guildName + ' / ' + t.channelName);
+                        } else {
+                            hasEmpty = true;
+                        }
+                    });
+                    const list = Array.from(channels).sort();
+                    if (hasEmpty) list.unshift('(未設定)');
+                    return list;
+                },
                 existingGuilds() { return [...new Set(this.tasks.map(t => t.guildName).filter(n => n))].sort(); },
-                uniqueTags() { return [...new Set(this.tasks.flatMap(t => t.tags))].sort(); },
+                uniqueGuilds() {
+                    const guilds = new Set(this.tasks.map(t => t.guildName).filter(n => n));
+                    const list = Array.from(guilds).sort();
+                    if (this.tasks.some(t => !t.guildName)) {
+                        list.unshift('(未設定)');
+                    }
+                    return list;
+                },
+                uniqueTags() {
+                    const tags = new Set(this.tasks.flatMap(t => t.tags));
+                    const list = Array.from(tags).sort();
+                    if (this.tasks.some(t => !t.tags || t.tags.length === 0)) {
+                        list.unshift('(タグ未設定)');
+                    }
+                    return list;
+                },
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
                     return this.tasks.filter(t => {
-                        if (this.filterUsers.length > 0 && !this.filterUsers.includes(t.userName)) return false;
-                        if (this.filterChannels.length > 0) {
-                            const key = t.guildName + ' / ' + t.channelName;
-                            if (!this.filterChannels.includes(key)) return false;
-                        }
+                        const targetName = t.assignee || '担当者未設定';
+                        if (this.filterUsers.length > 0 && !this.filterUsers.includes(targetName)) return false;
+                        if (this.filterGuilds.length > 0) { const key = t.guildName || '(未設定)'; if (!this.filterGuilds.includes(key)) return false; }
+                        if (this.filterChannels.length > 0) { const key = (t.guildName && t.channelName) ? (t.guildName + ' / ' + t.channelName) : '(未設定)'; if (!this.filterChannels.includes(key)) return false; }
+                        if (this.filterTags.length > 0) { if (this.filterTags.includes('(タグ未設定)') && (!t.tags || t.tags.length === 0)) return true; if (!t.tags || !t.tags.some(tag => this.filterTags.includes(tag))) return false; }
+                        if (this.filterPriorities.length > 0) { if (!this.filterPriorities.includes(t.priority)) return false; }
                         return true;
                     });
                 },
@@ -334,6 +481,7 @@
                 setInterval(this.fetchTasks, 3000);
             },
             methods: {
+                onDragOver(evt) { evt.preventDefault(); evt.dataTransfer.dropEffect = 'move'; },
                 async fetchTasks() {
                     if (this.editForm || this.showBatchModal || this.showReportModal || this.showConfigModal) return;
                     try {
@@ -342,12 +490,20 @@
                         this.loading = false;
                     } catch { }
                 },
+                getAvatar(userName) {
+                    if (userName === '担当者未設定') return '';
+                    const t = this.tasks.find(x => x.assignee === userName);
+                    return t ? t.avatarUrl : '';
+                },
                 getChannelsForGuild(guildName) {
                     if (!guildName) return [];
                     return [...new Set(this.tasks.filter(t => t.guildName === guildName).map(t => t.channelName).filter(n => n))].sort();
                 },
                 toggleFilterUser(u) { if (this.filterUsers.includes(u)) this.filterUsers = this.filterUsers.filter(x => x !== u); else this.filterUsers.push(u); },
                 toggleFilterChannel(c) { if (this.filterChannels.includes(c)) this.filterChannels = this.filterChannels.filter(x => x !== c); else this.filterChannels.push(c); },
+                toggleFilterTag(t) { if (this.filterTags.includes(t)) this.filterTags = this.filterTags.filter(x => x !== t); else this.filterTags.push(t); },
+                toggleFilterGuild(g) { if (this.filterGuilds.includes(g)) this.filterGuilds = this.filterGuilds.filter(x => x !== g); else this.filterGuilds.push(g); },
+                toggleFilterPriority(p) { if (this.filterPriorities.includes(p)) this.filterPriorities = this.filterPriorities.filter(x => x !== p); else this.filterPriorities.push(p); },
                 openBatchChannelModal() {
                     const lastTask = this.tasksActive.length > 0 ? this.tasksActive[0] : null;
                     this.batchForm = { guildName: lastTask ? lastTask.guildName : '', channelName: lastTask ? lastTask.channelName : '' };
@@ -369,7 +525,7 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-                    this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
+                    this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: '', userName: '', guildName: '', channelName: '' };
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
                 openEdit(task) {
@@ -396,14 +552,11 @@
                 async saveTask() {
                     if (!this.editForm.content) { alert('内容を入力してください'); return; }
                     const payload = { ...this.editForm };
-                    if (this.isCreating) {
-                        if (this.myUserId) payload.userId = this.myUserId;
-                        else { const u = this.tasks.find(t => t.userName === payload.userName); if (u) payload.userId = u.userId; }
-                    }
                     await fetch(this.isCreating ? '/api/create' : '/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     this.editForm = null; this.fetchTasks();
                 },
                 openReportModal() {
+                    this.isExportMode = false;
                     let target = '';
                     if (this.filterUsers.length === 1) target = this.filterUsers[0];
                     else if (this.myUserName) target = this.myUserName;
@@ -412,7 +565,62 @@
                     this.updateReportPreview();
                     this.showReportModal = true;
                 },
+                // ★修正: リスト出力を開始する
+                exportList(scope) {
+                    this.isExportMode = true;
+                    this.exportScope = scope;
+                    this.generateExportText();
+                    this.showReportModal = true;
+                },
+                // ★追加: チップで範囲を切り替えたとき
+                changeExportScope(scope) {
+                    this.exportScope = scope;
+                    this.generateExportText();
+                },
+                // ★追加: テキスト生成ロジックを分離
+                generateExportText() {
+                    const scope = this.exportScope;
+                    let text = "";
+
+                    const isFiltered = this.filterUsers.length > 0 || this.filterChannels.length > 0 || this.filterTags.length > 0 || this.filterGuilds.length > 0 || this.filterPriorities.length > 0;
+                    const filterNote = isFiltered ? " (絞り込み済み)" : "";
+
+                    const formatTasks = (list, title, isDone = false) => {
+                        if (list.length === 0) return "";
+                        let res = `\n${title} (${list.length}件)\n`;
+                        res += list.map(t => {
+                            let prio = this.getPrioLabel(t);
+                            if (prio) prio = `[${prio}] `;
+                            let time = "";
+                            if (isDone && t.completedAt) {
+                                time = `[${this.formatTime(t.completedAt)}] `;
+                            }
+                            return `・${time}${prio}${t.content}`;
+                        }).join('\n');
+                        return res + "\n";
+                    };
+
+                    if (scope === 'all') {
+                        text += `📊 タスク一覧出力${filterNote}\n`;
+                        text += formatTasks(this.tasksActive, "🚀 進行中");
+                        text += formatTasks(this.tasksDone, "✅ 完了", true);
+                        text += formatTasks(this.tasksArchive, "🗑️ アーカイブ");
+                    } else if (scope === 'active') {
+                        text += formatTasks(this.tasksActive, `🚀 未完了タスク一覧${filterNote}`);
+                    } else if (scope === 'done') {
+                        text += formatTasks(this.tasksDone, `✅ 完了タスク一覧${filterNote}`, true);
+                    } else if (scope === 'archive') {
+                        text += formatTasks(this.tasksArchive, `🗑️ アーカイブ一覧${filterNote}`);
+                    }
+
+                    if (!text.trim()) {
+                        this.reportPreview = "(表示するタスクはありません)";
+                    } else {
+                        this.reportPreview = text.trim();
+                    }
+                },
                 updateReportPreview() {
+                    if (this.isExportMode) return;
                     const u = this.reportForm.targetUser;
                     const sg = this.reportForm.sourceGuild;
                     const sc = this.reportForm.sourceChannel;
@@ -503,7 +711,7 @@
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
                 applySort(l) { if (this.sortMode === 'category') { return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a))); } return l.sort((a, b) => this.getScore(b) - this.getScore(a)); },
                 getScore(t) { return (t.priority === 1 ? 10 : (t.priority === 0 ? 5 : 1)); },
-                getPrioLabel(t) { return t.priority === 1 ? '高' : (t.priority === -1 ? '低' : ''); },
+                getPrioLabel(t) { return t.priority === 1 ? '高' : (t.priority === 0 ? '中' : '低'); },
                 getPrioClass(t) { return t.priority === 1 ? 'p-1' : (t.priority === 0 ? 'p-4' : 'p-3'); },
                 formatTime(iso) { if (!iso) return ''; const d = new Date(iso); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); }
             }
