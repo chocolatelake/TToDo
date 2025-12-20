@@ -55,39 +55,85 @@ namespace TToDo
             return "";
         }
 
-        // ★追加: 手動日報送信
-        public async Task<bool> SendManualReport(string userName, string guildName, string channelName)
+        public async Task<bool> SendManualReport(ReportRequest req)
         {
-            var targetChannelId = ResolveChannelId(guildName, channelName);
+            var targetChannelId = ResolveChannelId(req.TargetGuild, req.TargetChannel);
             if (targetChannelId == null) return false;
 
             var channel = _client.GetChannel(targetChannelId.Value) as ISocketMessageChannel;
             if (channel == null) return false;
 
-            var today = Globals.GetJstNow().Date;
+            // ★修正: 期間判定ロジック
+            var now = Globals.GetJstNow();
+            var today = now.Date;
+
+            DateTime rangeStart;
+            DateTime rangeEnd;
+            string dateLabel;
+            string periodName;
+
+            if (req.TargetRange == "yesterday")
+            {
+                // 昨日 00:00 <= t < 今日 00:00
+                rangeStart = today.AddDays(-1);
+                rangeEnd = today;
+                dateLabel = $"{rangeStart:yyyy/MM/dd} (昨日)";
+                periodName = "昨日";
+            }
+            else
+            {
+                // 今日 00:00 <= t < 明日 00:00
+                rangeStart = today;
+                rangeEnd = today.AddDays(1);
+                dateLabel = $"{rangeStart:yyyy/MM/dd}";
+                periodName = "本日";
+            }
+
             List<TaskItem> completedTasks;
 
             lock (Globals.Lock)
             {
                 completedTasks = Globals.AllTasks
-                    .Where(t => t.UserName == userName && t.CompletedAt != null && t.CompletedAt >= today)
+                    .Where(t =>
+                        (t.Assignee == req.TargetUser || (string.IsNullOrEmpty(t.Assignee) && t.UserName == req.TargetUser))
+                        && t.CompletedAt != null
+                        && t.CompletedAt >= rangeStart
+                        && t.CompletedAt < rangeEnd
+                        && (string.IsNullOrEmpty(req.SourceGuild) || t.GuildName == req.SourceGuild)
+                        && (string.IsNullOrEmpty(req.SourceChannel) || t.ChannelName == req.SourceChannel)
+                    )
                     .OrderBy(t => t.CompletedAt)
                     .ToList();
             }
 
+            string sourceInfo = "";
+            if (!string.IsNullOrEmpty(req.SourceGuild))
+            {
+                sourceInfo += $" ({req.SourceGuild}";
+                if (!string.IsNullOrEmpty(req.SourceChannel)) sourceInfo += $" / {req.SourceChannel}";
+                sourceInfo += ")";
+            }
+
             if (completedTasks.Count == 0)
             {
-                await channel.SendMessageAsync($"📭 **Daily Report: {userName}**\n本日の完了タスクはありません。");
+                await channel.SendMessageAsync($"📭 **Daily Report: {req.TargetUser}**{sourceInfo}\n{dateLabel} の完了タスクはありません。");
                 return true;
             }
 
             var sb = new StringBuilder();
-            sb.AppendLine($"📊 **Daily Report: {userName}** ({Globals.GetJstNow():yyyy/MM/dd})");
-            sb.AppendLine($"本日 **{completedTasks.Count}件** のタスクを完了しました！");
+            sb.AppendLine($"📊 **Daily Report: {req.TargetUser}**{sourceInfo}");
+            sb.AppendLine($"📅 {dateLabel}");
+            sb.AppendLine($"{periodName} **{completedTasks.Count}件** のタスクを完了しました！");
             sb.AppendLine("```");
             foreach (var t in completedTasks)
             {
-                sb.AppendLine($"・[{t.CompletedAt?.ToString("HH:mm")}] {t.Content}");
+                string location = "";
+                if (string.IsNullOrEmpty(req.SourceGuild) && !string.IsNullOrEmpty(t.GuildName))
+                {
+                    location = $" [{t.GuildName}]";
+                }
+
+                sb.AppendLine($"・[{t.CompletedAt?.ToString("HH:mm")}{location}] {t.Content}");
             }
             sb.AppendLine("```");
 
@@ -225,67 +271,56 @@ namespace TToDo
         private async Task ExportData(ISocketMessageChannel c, SocketUser u) { string j; lock (Globals.Lock) j = JsonSerializer.Serialize(Globals.AllTasks.Where(x => x.UserId == u.Id), new JsonSerializerOptions { WriteIndented = true }); if (j.Length > 1900) { File.WriteAllText("e.json", j); await c.SendFileAsync("e.json"); } else await c.SendMessageAsync($"```json\n{j}\n```"); }
         private async Task ImportData(ISocketMessageChannel c, string j) { try { var l = JsonSerializer.Deserialize<List<TaskItem>>(j); if (l != null) { lock (Globals.Lock) { foreach (var i in l) { Globals.AllTasks.RemoveAll(x => x.Id == i.Id); Globals.AllTasks.Add(i); } Globals.SaveData(); } await c.SendMessageAsync($"📥 {l.Count}件"); } } catch { } }
 
+        // 自動日報は「Assignee名」でターゲットを探す
         private async Task RunDailyClose(ulong userId, ISocketMessageChannel feedbackChannel = null)
         {
             var now = Globals.GetJstNow();
             var deleteThreshold = now.Date.AddDays(-1);
-            lock (Globals.Lock)
-            {
-                int removedCount = Globals.AllTasks.RemoveAll(t => t.CompletedAt != null && t.CompletedAt < deleteThreshold);
-                if (removedCount > 0) Globals.SaveData();
-            }
+            lock (Globals.Lock) { Globals.AllTasks.RemoveAll(t => t.CompletedAt != null && t.CompletedAt < deleteThreshold); Globals.SaveData(); }
 
-            DateTime reportStart;
-            if (now.Hour == 0 && now.Minute < 5) reportStart = now.Date.AddDays(-1);
-            else reportStart = now.Date;
+            UserConfig? config;
+            lock (Globals.Lock) { config = Globals.Configs.FirstOrDefault(x => x.UserId == userId); }
 
-            List<TaskItem> reportTasks;
-            lock (Globals.Lock)
+            // 設定あり -> 手動レポートと同じロジックで送信（期間は「本日」固定）
+            if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
             {
-                reportTasks = Globals.AllTasks
-                    .Where(t => t.UserId == userId && t.CompletedAt != null && t.CompletedAt >= reportStart)
-                    .ToList();
-            }
-
-            if (reportTasks.Count == 0)
-            {
-                if (feedbackChannel != null) await feedbackChannel.SendMessageAsync("本日の完了タスクはありません。");
+                var reportReq = new ReportRequest
+                {
+                    TargetUser = config.UserName,
+                    TargetGuild = config.TargetGuild,
+                    TargetChannel = config.TargetChannel,
+                    TargetRange = "today" // 自動送信は基本的に「今日」の分
+                };
+                await SendManualReport(reportReq);
                 return;
             }
 
-            var user = _client.GetUser(userId);
-            string userName = user?.Username ?? "User";
+            // 設定なし -> 従来通り (タスク発生元へ送信)
+            DateTime reportStart = (now.Hour == 0 && now.Minute < 5) ? now.Date.AddDays(-1) : now.Date;
+            List<TaskItem> reportTasks;
+            lock (Globals.Lock) { reportTasks = Globals.AllTasks.Where(t => t.UserId == userId && t.CompletedAt != null && t.CompletedAt >= reportStart).ToList(); }
 
-            var channelGroups = reportTasks.GroupBy(t => t.ChannelId);
+            if (reportTasks.Count == 0) { if (feedbackChannel != null) await feedbackChannel.SendMessageAsync("本日の完了タスクはありません。"); return; }
 
-            foreach (var group in channelGroups)
+            var u = _client.GetUser(userId);
+            string un = u?.Username ?? "User";
+            foreach (var group in reportTasks.GroupBy(t => t.ChannelId))
             {
                 try
                 {
                     ulong chId = group.Key;
                     var targetChannel = _client.GetChannel(chId) as ISocketMessageChannel;
                     if (targetChannel == null) try { targetChannel = await _client.GetChannelAsync(chId) as ISocketMessageChannel; } catch { }
-
-                    if (targetChannel == null && feedbackChannel != null) targetChannel = feedbackChannel;
                     if (targetChannel == null) continue;
-
                     var sb = new StringBuilder();
-                    sb.AppendLine($"🌅 **Daily Report: {userName}** ({Globals.GetJstNow():yyyy/MM/dd})");
+                    sb.AppendLine($"🌅 **Daily Report: {un}** ({Globals.GetJstNow():yyyy/MM/dd})");
                     sb.AppendLine($"**{group.Count()}件** 完了！");
                     sb.AppendLine("```");
-                    foreach (var tGroup in group.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "その他"))
-                    {
-                        sb.AppendLine($"【{tGroup.Key}】");
-                        foreach (var t in tGroup) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}");
-                        sb.AppendLine();
-                    }
+                    foreach (var tGroup in group.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "その他")) { sb.AppendLine($"【{tGroup.Key}】"); foreach (var t in tGroup) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}"); sb.AppendLine(); }
                     sb.AppendLine("```");
                     await targetChannel.SendMessageAsync(sb.ToString());
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Error] Report send failed for channel {group.Key}: {ex.Message}");
-                }
+                catch { }
             }
         }
 

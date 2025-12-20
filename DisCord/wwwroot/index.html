@@ -19,6 +19,7 @@
                 <button class="btn-sort" @click="openCreateModal" style="color:var(--primary-color); border-color:var(--primary-color);">＋ 新規タスク</button>
                 <span class="divider">|</span>
                 <button class="btn-sort" @click="openReportModal">📋 日報作成</button>
+                <button class="btn-sort" @click="openConfigModal">⚙️ 設定</button>
                 <span class="divider">|</span>
                 <button class="btn-sort" @click="showFilterMenu = !showFilterMenu">🔍 絞り込み</button>
                 <span class="divider">|</span>
@@ -126,30 +127,18 @@
             <div class="modal">
                 <h3>{{ isCreating ? '新規タスク' : 'タスク編集' }}</h3>
                 <div class="form-group"><label>内容</label><textarea class="form-control" rows="3" v-model="editForm.content"></textarea></div>
-
                 <div class="form-group">
                     <label>担当者 (Assignee)</label>
                     <input type="text" class="form-control" v-model="editForm.assignee" list="assigneeList" placeholder="名前を入力...">
-                    <datalist id="assigneeList">
-                        <option v-for="name in allAssignees" :value="name"></option>
-                    </datalist>
+                    <datalist id="assigneeList"><option v-for="name in allAssignees" :value="name"></option></datalist>
                 </div>
-
                 <div class="form-group">
                     <label>送信先 (サーバー / チャンネル)</label>
                     <div class="row">
-                        <select class="form-control" v-model="editForm.guildName" @change="editForm.channelName = ''">
-                            <option value="">(未設定)</option>
-                            <option v-for="g in existingGuilds" :value="g">{{ g }}</option>
-                        </select>
-                        <span style="align-self:center">/</span>
-                        <select class="form-control" v-model="editForm.channelName">
-                            <option value="">(未設定)</option>
-                            <option v-for="c in getChannelsForGuild(editForm.guildName)" :value="c">{{ c }}</option>
-                        </select>
+                        <select class="form-control" v-model="editForm.guildName" @change="editForm.channelName = ''"><option value="">(未設定)</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select>
+                        <select class="form-control" v-model="editForm.channelName"><option value="">(未設定)</option><option v-for="c in getChannelsForGuild(editForm.guildName)" :value="c">{{ c }}</option></select>
                     </div>
                 </div>
-
                 <div class="form-group"><label>タグ</label><input type="text" class="form-control" v-model="editForm.tagsStr"></div>
                 <div class="form-group">
                     <label>優先度</label>
@@ -159,10 +148,7 @@
                         <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">なし</div>
                     </div>
                 </div>
-                <div class="modal-actions">
-                    <button class="btn btn-cancel" @click="editForm = null">キャンセル</button>
-                    <button class="btn btn-save" @click="saveTask">保存</button>
-                </div>
+                <div class="modal-actions"><button class="btn btn-cancel" @click="editForm = null">キャンセル</button><button class="btn btn-save" @click="saveTask">保存</button></div>
             </div>
         </div>
 
@@ -171,10 +157,32 @@
                 <h3>📋 日報抽出</h3>
 
                 <div class="form-group">
-                    <label>対象ユーザー</label>
+                    <label>対象ユーザー (担当者)</label>
                     <select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview">
-                        <option v-for="u in uniqueUsers" :value="u">{{ u }}</option>
+                        <option v-for="u in allAssignees" :value="u">{{ u }}</option>
                     </select>
+                </div>
+
+                <div class="form-group">
+                    <label>対象期間</label>
+                    <div class="chip-group">
+                        <div class="chip" :class="{selected: reportForm.targetRange==='today'}" @click="reportForm.targetRange='today'; updateReportPreview()">今日</div>
+                        <div class="chip" :class="{selected: reportForm.targetRange==='yesterday'}" @click="reportForm.targetRange='yesterday'; updateReportPreview()">昨日</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>抽出条件 (発生元)</label>
+                    <div class="row">
+                        <select class="form-control" v-model="reportForm.sourceGuild" @change="reportForm.sourceChannel = ''; updateReportPreview()">
+                            <option value="">全てのサーバー</option>
+                            <option v-for="g in existingGuilds" :value="g">{{ g }}</option>
+                        </select>
+                        <select class="form-control" v-model="reportForm.sourceChannel" @change="updateReportPreview" :disabled="!reportForm.sourceGuild">
+                            <option value="">全てのチャンネル</option>
+                            <option v-for="c in getChannelsForGuild(reportForm.sourceGuild)" :value="c">{{ c }}</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -188,14 +196,8 @@
                 <div class="form-group">
                     <label>Discordへ送信</label>
                     <div class="row">
-                        <select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''">
-                            <option value="">サーバー選択</option>
-                            <option v-for="g in existingGuilds" :value="g">{{ g }}</option>
-                        </select>
-                        <select class="form-control" v-model="reportForm.channelName">
-                            <option value="">チャンネル選択</option>
-                            <option v-for="c in getChannelsForGuild(reportForm.guildName)" :value="c">{{ c }}</option>
-                        </select>
+                        <select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select>
+                        <select class="form-control" v-model="reportForm.channelName"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(reportForm.guildName)" :value="c">{{ c }}</option></select>
                     </div>
                 </div>
 
@@ -206,29 +208,25 @@
             </div>
         </div>
 
+        <div v-if="showConfigModal" class="modal-overlay" @click.self="showConfigModal = false">
+            <div class="modal" style="max-width: 500px;">
+                <h3>⚙️ 自動日報設定</h3>
+                <div class="form-group"><label>対象ユーザー</label><select class="form-control" v-model="configForm.userName" @change="loadUserConfig"><option disabled value="">ユーザーを選択...</option><option v-for="u in uniqueUsers" :value="u">{{ u }}</option></select></div>
+                <div v-if="configForm.userName">
+                    <div class="form-group"><label>自動送信時刻</label><input type="time" class="form-control" v-model="configForm.reportTime"></div>
+                    <div class="form-group"><label>送信先 (サーバー / チャンネル)</label><div class="row"><select class="form-control" v-model="configForm.targetGuild" @change="configForm.targetChannel = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="configForm.targetChannel"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(configForm.targetGuild)" :value="c">{{ c }}</option></select></div></div>
+                </div>
+                <div class="modal-actions"><button class="btn btn-cancel" @click="showConfigModal = false">閉じる</button><button class="btn btn-save" @click="saveConfig" :disabled="!configForm.userName">保存</button></div>
+            </div>
+        </div>
+
         <div v-if="showBatchModal" class="modal-overlay" @click.self="showBatchModal = false">
             <div class="modal" style="max-width: 450px;">
                 <h3>📡 送信先の一括変更</h3>
                 <p style="font-size:0.9rem; color:#555;">あなたの<b>「アーカイブ以外の全タスク」</b>の日報送信先を、以下に変更します。</p>
-                <div class="form-group">
-                    <label>サーバー</label>
-                    <select class="form-control" v-model="batchForm.guildName" @change="batchForm.channelName = ''">
-                        <option disabled value="">選択してください</option>
-                        <option v-for="g in existingGuilds" :value="g">{{ g }}</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>チャンネル</label>
-                    <select class="form-control" v-model="batchForm.channelName">
-                        <option disabled value="">選択してください</option>
-                        <option v-for="c in getChannelsForGuild(batchForm.guildName)" :value="c">{{ c }}</option>
-                    </select>
-                </div>
-                <div style="font-size:0.8rem; color:#e00; margin-bottom:15px;" v-if="batchError">{{ batchError }}</div>
-                <div class="modal-actions">
-                    <button class="btn btn-cancel" @click="showBatchModal = false">キャンセル</button>
-                    <button class="btn btn-save" @click="submitBatchChannel">一括適用</button>
-                </div>
+                <div class="form-group"><label>サーバー</label><select class="form-control" v-model="batchForm.guildName" @change="batchForm.channelName = ''"><option disabled value="">選択してください</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select></div>
+                <div class="form-group"><label>チャンネル</label><select class="form-control" v-model="batchForm.channelName"><option disabled value="">選択してください</option><option v-for="c in getChannelsForGuild(batchForm.guildName)" :value="c">{{ c }}</option></select></div>
+                <div class="modal-actions"><button class="btn btn-cancel" @click="showBatchModal = false">キャンセル</button><button class="btn btn-save" @click="submitBatchChannel">一括適用</button></div>
             </div>
         </div>
     </div>
@@ -238,10 +236,12 @@
         createApp({
             data() {
                 return {
-                    tasks: [], loading: true, editForm: null, isCreating: false,
+                    tasks: [], configs: [], loading: true, editForm: null, isCreating: false,
                     sortMode: 'priority', userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
-                    showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '' }, reportPreview: '',
+                    // ★修正: targetRange 初期値追加
+                    showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
+                    showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
                     showFilterMenu: false, filterUsers: [], filterChannels: []
                 }
             },
@@ -254,13 +254,7 @@
                 uniqueUsers() { return [...new Set(this.tasks.map(t => t.userName).filter(n => n))].sort(); },
                 uniqueChannels() { return [...new Set(this.tasks.map(t => t.guildName + ' / ' + t.channelName).filter(n => n.length > 3))].sort(); },
                 existingGuilds() { return [...new Set(this.tasks.map(t => t.guildName).filter(n => n))].sort(); },
-
-                myUserName() {
-                    if (!this.myUserId) return null;
-                    const myTask = this.tasks.find(t => t.userId == this.myUserId);
-                    return myTask ? myTask.userName : null;
-                },
-
+                myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
                     return this.tasks.filter(t => {
                         if (this.filterUsers.length > 0 && !this.filterUsers.includes(t.userName)) return false;
@@ -281,152 +275,117 @@
             mounted() {
                 const p = new URLSearchParams(window.location.search);
                 const uid = p.get('uid');
-                if (uid) {
-                    this.myUserId = uid;
-                    localStorage.setItem('ttodo_uid', uid);
-                    window.history.replaceState({}, '', window.location.pathname);
-                } else {
-                    this.myUserId = localStorage.getItem('ttodo_uid');
-                }
+                if (uid) { this.myUserId = uid; localStorage.setItem('ttodo_uid', uid); window.history.replaceState({}, '', window.location.pathname); }
+                else { this.myUserId = localStorage.getItem('ttodo_uid'); }
                 this.userId = this.myUserId;
                 this.fetchTasks();
                 setInterval(this.fetchTasks, 3000);
             },
             methods: {
                 async fetchTasks() {
-                    if (this.editForm || this.showBatchModal || this.showReportModal) return;
-                    try { const r = await fetch('/api/tasks'); this.tasks = await r.json(); this.loading = false; } catch { }
+                    if (this.editForm || this.showBatchModal || this.showReportModal || this.showConfigModal) return;
+                    try {
+                        const r = await fetch('/api/tasks'); this.tasks = await r.json();
+                        const rc = await fetch('/api/config'); this.configs = await rc.json();
+                        this.loading = false;
+                    } catch { }
                 },
                 getChannelsForGuild(guildName) {
                     if (!guildName) return [];
                     return [...new Set(this.tasks.filter(t => t.guildName === guildName).map(t => t.channelName).filter(n => n))].sort();
                 },
-                toggleFilterUser(u) {
-                    if (this.filterUsers.includes(u)) this.filterUsers = this.filterUsers.filter(x => x !== u);
-                    else this.filterUsers.push(u);
-                },
-                toggleFilterChannel(c) {
-                    if (this.filterChannels.includes(c)) this.filterChannels = this.filterChannels.filter(x => x !== c);
-                    else this.filterChannels.push(c);
-                },
+                toggleFilterUser(u) { if (this.filterUsers.includes(u)) this.filterUsers = this.filterUsers.filter(x => x !== u); else this.filterUsers.push(u); },
+                toggleFilterChannel(c) { if (this.filterChannels.includes(c)) this.filterChannels = this.filterChannels.filter(x => x !== c); else this.filterChannels.push(c); },
                 openBatchChannelModal() {
                     const lastTask = this.tasksActive.length > 0 ? this.tasksActive[0] : null;
-                    this.batchForm = {
-                        guildName: lastTask ? lastTask.guildName : '',
-                        channelName: lastTask ? lastTask.channelName : ''
-                    };
-                    this.batchError = '';
+                    this.batchForm = { guildName: lastTask ? lastTask.guildName : '', channelName: lastTask ? lastTask.channelName : '' };
                     this.showBatchModal = true;
                 },
                 async submitBatchChannel() {
-                    if (!this.batchForm.guildName || !this.batchForm.channelName) { this.batchError = '選択してください'; return; }
+                    if (!this.batchForm.guildName || !this.batchForm.channelName) { alert('選択してください'); return; }
                     try {
                         const payload = { ...this.batchForm, userId: this.myUserId };
                         await fetch('/api/batch/channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         this.showBatchModal = false; alert('変更しました'); this.fetchTasks();
-                    } catch (e) { this.batchError = 'エラー'; }
+                    } catch (e) { }
                 },
                 async cleanupArchive() {
                     const targets = this.filterUsers;
-                    let msg = '';
-                    if (targets.length > 0) msg = `現在絞り込まれている以下のユーザーのアーカイブのみを削除します。\n対象: ${targets.join(', ')}`;
-                    else msg = 'すべてのユーザーのアーカイブを完全に削除します。\n（絞り込みを行っていません）';
-                    if (!confirm(msg + '\n\nこの操作は取り消せません。よろしいですか？')) return;
-                    await fetch('/api/archive/cleanup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ targetUserNames: targets })
-                    });
+                    if (!confirm('削除しますか？')) return;
+                    await fetch('/api/archive/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUserNames: targets }) });
                     this.fetchTasks();
                 },
-
                 openCreateModal() {
                     this.isCreating = true;
-                    this.editForm = {
-                        content: '',
-                        priority: -1,
-                        difficulty: -1,
-                        tagsStr: '',
-                        assignee: this.myUserName || '',
-                        userName: this.myUserName || '',
-                        guildName: '',
-                        channelName: ''
-                    };
+                    this.editForm = { content: '', priority: -1, difficulty: -1, tagsStr: '', assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
                 },
-                openEdit(task) {
-                    this.isCreating = false;
-                    this.editForm = { ...task, tagsStr: task.tags.join(', ') };
-                },
+                openEdit(task) { this.isCreating = false; this.editForm = { ...task, tagsStr: task.tags.join(', ') }; },
                 async saveTask() {
                     if (!this.editForm.content) { alert('内容を入力してください'); return; }
-
-                    const payload = {
-                        ...this.editForm,
-                        tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s)
-                    };
-
+                    const payload = { ...this.editForm, tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s) };
                     if (this.isCreating) {
                         if (this.myUserId) payload.userId = this.myUserId;
-                        else {
-                            const u = this.tasks.find(t => t.userName === payload.userName);
-                            if (u) payload.userId = u.userId;
-                        }
+                        else { const u = this.tasks.find(t => t.userName === payload.userName); if (u) payload.userId = u.userId; }
                     }
-
-                    const url = this.isCreating ? '/api/create' : '/api/update';
-                    await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    this.editForm = null;
-                    this.fetchTasks();
+                    await fetch(this.isCreating ? '/api/create' : '/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    this.editForm = null; this.fetchTasks();
                 },
-
-                // ★追加: 日報関連
                 openReportModal() {
-                    // 初期ターゲット: 絞り込み中ならそのユーザー、自分がいれば自分、いなければリストの先頭
                     let target = '';
                     if (this.filterUsers.length === 1) target = this.filterUsers[0];
                     else if (this.myUserName) target = this.myUserName;
-                    else if (this.uniqueUsers.length > 0) target = this.uniqueUsers[0];
-
-                    this.reportForm = {
-                        targetUser: target,
-                        guildName: '',
-                        channelName: ''
-                    };
+                    else if (this.allAssignees.length > 0) target = this.allAssignees[0];
+                    this.reportForm = { targetUser: target, guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' };
                     this.updateReportPreview();
                     this.showReportModal = true;
                 },
                 updateReportPreview() {
                     const u = this.reportForm.targetUser;
+                    const sg = this.reportForm.sourceGuild;
+                    const sc = this.reportForm.sourceChannel;
                     if (!u) { this.reportPreview = '(ユーザーを選択してください)'; return; }
 
-                    // 今日の0時以降に完了したタスクを抽出
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
 
-                    const completed = this.tasks
-                        .filter(t => t.userName === u && t.completedAt && new Date(t.completedAt) >= today)
-                        .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
+                    // ★修正: 期間フィルタリング
+                    let start = new Date(today);
+                    let end = new Date(today);
+                    end.setDate(end.getDate() + 1);
+
+                    let dateLabel = "本日";
+                    if (this.reportForm.targetRange === 'yesterday') {
+                        start.setDate(start.getDate() - 1);
+                        end = new Date(today);
+                        dateLabel = "昨日";
+                    }
+
+                    const completed = this.tasks.filter(t =>
+                        (t.assignee === u || (!t.assignee && t.userName === u)) &&
+                        t.completedAt &&
+                        new Date(t.completedAt) >= start &&
+                        new Date(t.completedAt) < end &&
+                        (!sg || t.guildName === sg) &&
+                        (!sc || t.channelName === sc)
+                    ).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
 
                     if (completed.length === 0) {
-                        this.reportPreview = `📭 Daily Report: ${u}\n本日の完了タスクはありません。`;
+                        this.reportPreview = `📭 Daily Report: ${u}\n${dateLabel}の完了タスクはありません。`;
                     } else {
-                        const lines = completed.map(t => `・[${this.formatTime(t.completedAt)}] ${t.content}`);
-                        this.reportPreview = `📊 Daily Report: ${u}\n本日 ${completed.length}件 完了！\n\n` + lines.join('\n');
+                        const lines = completed.map(t => {
+                            let loc = '';
+                            if (!sg && t.guildName) loc = ` [${t.guildName}]`;
+                            return `・[${this.formatTime(t.completedAt)}${loc}] ${t.content}`;
+                        });
+
+                        let header = `📊 Daily Report: ${u}`;
+                        if (sg) { header += ` (${sg}`; if (sc) header += ` / ${sc}`; header += `)`; }
+
+                        this.reportPreview = `${header}\n${dateLabel} ${completed.length}件 完了！\n\n` + lines.join('\n');
                     }
                 },
-                copyReport() {
-                    navigator.clipboard.writeText(this.reportPreview);
-                    alert('コピーしました！');
-                },
+                copyReport() { navigator.clipboard.writeText(this.reportPreview); alert('コピーしました！'); },
                 async sendReport() {
-                    if (!this.reportForm.targetUser || !this.reportForm.guildName || !this.reportForm.channelName) {
-                        alert('送信先を選択してください'); return;
-                    }
+                    if (!this.reportForm.targetUser || !this.reportForm.guildName || !this.reportForm.channelName) { alert('送信先を選択してください'); return; }
                     if (!confirm('Discordに送信しますか？')) return;
 
                     await fetch('/api/report/send', {
@@ -435,13 +394,34 @@
                         body: JSON.stringify({
                             userName: this.reportForm.targetUser,
                             guildName: this.reportForm.guildName,
-                            channelName: this.reportForm.channelName
+                            channelName: this.reportForm.channelName,
+                            sourceGuild: this.reportForm.sourceGuild,
+                            sourceChannel: this.reportForm.sourceChannel,
+                            targetRange: this.reportForm.targetRange // ★追加
                         })
                     });
-                    this.showReportModal = false;
-                    alert('送信しました！');
+                    this.showReportModal = false; alert('送信しました！');
                 },
-
+                openConfigModal() {
+                    this.configForm = { userName: this.myUserName || '', reportTime: '00:00', targetGuild: '', targetChannel: '' };
+                    this.showConfigModal = true;
+                    if (this.configForm.userName) this.loadUserConfig();
+                },
+                loadUserConfig() {
+                    if (!this.configForm.userName) return;
+                    const userTask = this.tasks.find(t => t.userName === this.configForm.userName);
+                    if (!userTask) return;
+                    const conf = this.configs.find(c => c.userId == userTask.userId);
+                    if (conf) { this.configForm.reportTime = conf.reportTime; this.configForm.targetGuild = conf.targetGuild || ''; this.configForm.targetChannel = conf.targetChannel || ''; }
+                    else { this.configForm.reportTime = '00:00'; this.configForm.targetGuild = ''; this.configForm.targetChannel = ''; }
+                },
+                async saveConfig() {
+                    const userTask = this.tasks.find(t => t.userName === this.configForm.userName);
+                    if (!userTask) { alert('ユーザーが見つかりません'); return; }
+                    const payload = { userId: userTask.userId, userName: userTask.userName, reportTime: this.configForm.reportTime, targetGuild: this.configForm.targetGuild, targetChannel: this.configForm.targetChannel };
+                    await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    this.showConfigModal = false; alert('保存しました'); this.fetchTasks();
+                },
                 onDragStart(evt, t) { evt.dataTransfer.dropEffect = 'move'; evt.dataTransfer.effectAllowed = 'move'; evt.dataTransfer.setData('taskId', t.id); },
                 onDrop(evt, s) { const id = evt.dataTransfer.getData('taskId'); const t = this.tasks.find(x => x.id === id); if (t) { if (s === 'active') this.moveToActive(t); else if (s === 'done') this.moveToDone(t); else this.moveToArchive(t); } },
                 async moveToDone(t) { if (t.isForgotten) await this.post('/api/restore', t); if (!t.completedAt) { t.completedAt = new Date().toISOString(); await this.post('/api/done', t); } },

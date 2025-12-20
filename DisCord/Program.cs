@@ -34,11 +34,35 @@ namespace TToDo
                 }
             });
 
-            // ★追加: 日報手動送信API
+            app.MapGet("/api/config", () => {
+                lock (Globals.Lock)
+                {
+                    return Results.Json(Globals.Configs);
+                }
+            });
+
+            app.MapPost("/api/config", (UserConfig req) => {
+                lock (Globals.Lock)
+                {
+                    var c = Globals.Configs.FirstOrDefault(x => x.UserId == req.UserId);
+                    if (c == null)
+                    {
+                        c = new UserConfig { UserId = req.UserId };
+                        Globals.Configs.Add(c);
+                    }
+                    c.UserName = req.UserName;
+                    c.ReportTime = req.ReportTime;
+                    c.TargetGuild = req.TargetGuild;
+                    c.TargetChannel = req.TargetChannel;
+                    Globals.SaveData();
+                }
+                return Results.Ok();
+            });
+
+            // ★修正: 新しいReportRequestを受け取る
             app.MapPost("/api/report/send", async (ReportRequest req) => {
                 if (DiscordBot.Instance == null) return Results.BadRequest();
-
-                bool success = await DiscordBot.Instance.SendManualReport(req.UserName, req.GuildName, req.ChannelName);
+                bool success = await DiscordBot.Instance.SendManualReport(req);
                 return success ? Results.Ok() : Results.BadRequest();
             });
 
@@ -46,7 +70,6 @@ namespace TToDo
                 lock (Globals.Lock)
                 {
                     if (string.IsNullOrWhiteSpace(item.Content)) return Results.BadRequest();
-
                     item.Id = Guid.NewGuid().ToString("N");
                     item.UserName = "Webからの追加";
 
@@ -124,7 +147,6 @@ namespace TToDo
                         Globals.AllTasks.RemoveAll(t => t.IsForgotten && req.TargetUserNames.Contains(t.UserName));
                     else
                         Globals.AllTasks.RemoveAll(t => t.IsForgotten);
-
                     Globals.SaveData();
                 }
                 return Results.Ok();

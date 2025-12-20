@@ -25,7 +25,10 @@ namespace TToDo
     public class UserConfig
     {
         public ulong UserId { get; set; }
+        public string UserName { get; set; } = "";
         public string ReportTime { get; set; } = "00:00";
+        public string TargetGuild { get; set; } = "";
+        public string TargetChannel { get; set; } = "";
     }
 
     public class BatchChannelRequest
@@ -40,11 +43,16 @@ namespace TToDo
         public List<string> TargetUserNames { get; set; } = new List<string>();
     }
 
-    // ★追加: 日報送信リクエスト
     public class ReportRequest
     {
-        public string UserName { get; set; } = "";
-        public string GuildName { get; set; } = "";
-        public string ChannelName { get; set; } = "";
+        public string TargetUser { get; set; } = "";
+        public string TargetGuild { get; set; } = "";
+        public string TargetChannel { get; set; } = "";
+
+        public string SourceGuild { get; set; } = "";
+        public string SourceChannel { get; set; } = "";
+
+        // ★追加: 対象期間 ("today" or "yesterday")
+        public string TargetRange { get; set; } = "today";
     }
 }
