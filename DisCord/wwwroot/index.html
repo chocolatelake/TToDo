@@ -7,6 +7,36 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .edit-tag {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
+
+        .remove-tag {
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.8;
+        }
+
+            .remove-tag:hover {
+                opacity: 1;
+            }
+
+        .tag-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+    </style>
 </head>
 <body>
     <div id="app" class="app-container">
@@ -60,7 +90,7 @@
                                 <span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span>
                                 <span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
                                 <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
-                                <span v-if="task.priority > -1" class="tag prio-tag">{{ getPrioLabel(task) }}</span>
+                                <span v-if="task.priority !== 0" class="tag prio-tag">{{ getPrioLabel(task) }}</span>
                             </div>
                             <div class="text">{{ task.content }}</div>
                         </div>
@@ -127,11 +157,15 @@
             <div class="modal">
                 <h3>{{ isCreating ? '新規タスク' : 'タスク編集' }}</h3>
                 <div class="form-group"><label>内容</label><textarea class="form-control" rows="3" v-model="editForm.content"></textarea></div>
+
                 <div class="form-group">
                     <label>担当者 (Assignee)</label>
-                    <input type="text" class="form-control" v-model="editForm.assignee" list="assigneeList" placeholder="名前を入力...">
-                    <datalist id="assigneeList"><option v-for="name in allAssignees" :value="name"></option></datalist>
+                    <select class="form-control" v-model="editForm.assignee">
+                        <option value="">(未設定)</option>
+                        <option v-for="name in allAssignees" :value="name">{{ name }}</option>
+                    </select>
                 </div>
+
                 <div class="form-group">
                     <label>送信先 (サーバー / チャンネル)</label>
                     <div class="row">
@@ -139,13 +173,30 @@
                         <select class="form-control" v-model="editForm.channelName"><option value="">(未設定)</option><option v-for="c in getChannelsForGuild(editForm.guildName)" :value="c">{{ c }}</option></select>
                     </div>
                 </div>
-                <div class="form-group"><label>タグ</label><input type="text" class="form-control" v-model="editForm.tagsStr"></div>
+
+                <div class="form-group">
+                    <label>タグ</label>
+                    <div style="margin-bottom: 5px;">
+                        <span v-for="tag in editForm.tags" class="tag edit-tag">
+                            #{{ tag }} <span class="remove-tag" @click="removeTag(tag)">×</span>
+                        </span>
+                    </div>
+                    <div class="tag-controls">
+                        <select class="form-control" v-model="selectedExistingTag" @change="addExistingTag" style="flex:1;">
+                            <option value="">既存タグから追加...</option>
+                            <option v-for="t in uniqueTags" :value="t">{{ t }}</option>
+                        </select>
+                        <input type="text" class="form-control" v-model="newTagInput" placeholder="新規タグ..." style="flex:1;" @keydown.enter.prevent="addNewTag">
+                        <button class="btn" style="background:var(--border-color); padding:0 12px;" @click="addNewTag">＋</button>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label>優先度</label>
                     <div class="chip-group">
-                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">重要</div>
+                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">高</div>
                         <div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">普通</div>
-                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">なし</div>
+                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">低</div>
                     </div>
                 </div>
                 <div class="modal-actions"><button class="btn btn-cancel" @click="editForm = null">キャンセル</button><button class="btn btn-save" @click="saveTask">保存</button></div>
@@ -239,10 +290,10 @@
                     tasks: [], configs: [], loading: true, editForm: null, isCreating: false,
                     sortMode: 'priority', userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
-                    // ★修正: targetRange 初期値追加
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
-                    showFilterMenu: false, filterUsers: [], filterChannels: []
+                    showFilterMenu: false, filterUsers: [], filterChannels: [],
+                    newTagInput: '', selectedExistingTag: ''
                 }
             },
             computed: {
@@ -254,6 +305,7 @@
                 uniqueUsers() { return [...new Set(this.tasks.map(t => t.userName).filter(n => n))].sort(); },
                 uniqueChannels() { return [...new Set(this.tasks.map(t => t.guildName + ' / ' + t.channelName).filter(n => n.length > 3))].sort(); },
                 existingGuilds() { return [...new Set(this.tasks.map(t => t.guildName).filter(n => n))].sort(); },
+                uniqueTags() { return [...new Set(this.tasks.flatMap(t => t.tags))].sort(); },
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
                     return this.tasks.filter(t => {
@@ -317,12 +369,33 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-                    this.editForm = { content: '', priority: -1, difficulty: -1, tagsStr: '', assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
+                    this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
+                    this.newTagInput = ''; this.selectedExistingTag = '';
                 },
-                openEdit(task) { this.isCreating = false; this.editForm = { ...task, tagsStr: task.tags.join(', ') }; },
+                openEdit(task) {
+                    this.isCreating = false;
+                    this.editForm = { ...task, tags: [...task.tags] };
+                    this.newTagInput = ''; this.selectedExistingTag = '';
+                },
+                removeTag(tag) {
+                    this.editForm.tags = this.editForm.tags.filter(t => t !== tag);
+                },
+                addExistingTag() {
+                    if (this.selectedExistingTag && !this.editForm.tags.includes(this.selectedExistingTag)) {
+                        this.editForm.tags.push(this.selectedExistingTag);
+                    }
+                    this.selectedExistingTag = '';
+                },
+                addNewTag() {
+                    const t = this.newTagInput.trim();
+                    if (t && !this.editForm.tags.includes(t)) {
+                        this.editForm.tags.push(t);
+                    }
+                    this.newTagInput = '';
+                },
                 async saveTask() {
                     if (!this.editForm.content) { alert('内容を入力してください'); return; }
-                    const payload = { ...this.editForm, tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s) };
+                    const payload = { ...this.editForm };
                     if (this.isCreating) {
                         if (this.myUserId) payload.userId = this.myUserId;
                         else { const u = this.tasks.find(t => t.userName === payload.userName); if (u) payload.userId = u.userId; }
@@ -347,7 +420,6 @@
 
                     const today = new Date(); today.setHours(0, 0, 0, 0);
 
-                    // ★修正: 期間フィルタリング
                     let start = new Date(today);
                     let end = new Date(today);
                     end.setDate(end.getDate() + 1);
@@ -392,12 +464,12 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            userName: this.reportForm.targetUser,
-                            guildName: this.reportForm.guildName,
-                            channelName: this.reportForm.channelName,
+                            targetUser: this.reportForm.targetUser,
+                            targetGuild: this.reportForm.guildName,
+                            targetChannel: this.reportForm.channelName,
                             sourceGuild: this.reportForm.sourceGuild,
                             sourceChannel: this.reportForm.sourceChannel,
-                            targetRange: this.reportForm.targetRange // ★追加
+                            targetRange: this.reportForm.targetRange
                         })
                     });
                     this.showReportModal = false; alert('送信しました！');
@@ -430,9 +502,9 @@
                 async deleteTask(t) { if (confirm('完全削除しますか？')) await this.post('/api/delete', t); },
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
                 applySort(l) { if (this.sortMode === 'category') { return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a))); } return l.sort((a, b) => this.getScore(b) - this.getScore(a)); },
-                getScore(t) { return (t.priority === 1 ? 10 : t.priority === 0 ? 5 : 1); },
-                getPrioLabel(t) { return t.priority === 1 ? '重要' : (t.priority === 0 ? '普通' : ''); },
-                getPrioClass(t) { return t.priority === 1 ? (t.difficulty === 1 ? 'p-1' : 'p-2') : (t.priority === 0 ? (t.difficulty === 1 ? 'p-3' : 'p-4') : 'p-0'); },
+                getScore(t) { return (t.priority === 1 ? 10 : (t.priority === 0 ? 5 : 1)); },
+                getPrioLabel(t) { return t.priority === 1 ? '高' : (t.priority === -1 ? '低' : ''); },
+                getPrioClass(t) { return t.priority === 1 ? 'p-1' : (t.priority === 0 ? 'p-4' : 'p-3'); },
                 formatTime(iso) { if (!iso) return ''; const d = new Date(iso); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); }
             }
         }).mount('#app')
