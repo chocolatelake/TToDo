@@ -118,6 +118,10 @@ namespace TToDo
             sb.AppendLine("・`?` 先頭で「優先度：低」");
             sb.AppendLine("・`#タグ名` でタグ付け");
             sb.AppendLine("");
+            // ★追加: 非タスク化文字の説明
+            sb.AppendLine("**非タスク化文字 (行頭にあると直前のタスクの続きになります):**");
+            sb.AppendLine("`スペース` `タブ` `→` `：` `:` `・` `※` `>` `-` `+` `*` `■` `□` `●` `○`");
+            sb.AppendLine("");
             sb.AppendLine("`!ttodo list`");
             sb.AppendLine("自分の未完了タスク一覧を表示します。");
             sb.AppendLine("");
@@ -176,7 +180,7 @@ namespace TToDo
                 {
                     if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
 
-                    // ★修正: 優先度判定ロジック (3段階)
+                    // 優先度判定ロジック (3段階)
                     int prio = 0; // 0: 普通
                     string content = trimLine;
 
@@ -508,7 +512,7 @@ namespace TToDo
             }
         }
 
-        // ★修正: ソートスコア（高 > 普通 > 低）
+        // ソートスコア（高 > 普通 > 低）
         private int GetSortScore(TaskItem t)
         {
             if (t.CompletedAt != null) return -10;
@@ -519,7 +523,7 @@ namespace TToDo
             return 1; // 低 (-1)
         }
 
-        // ★修正: ラベル表示
+        // ラベル表示
         private string GetPriorityLabel(int p)
         {
             if (p == 1) return "高";

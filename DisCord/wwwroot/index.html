@@ -194,9 +194,9 @@
                 <div class="form-group">
                     <label>優先度</label>
                     <div class="chip-group">
-                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">高 (!)</div>
+                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">高</div>
                         <div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">普通</div>
-                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">低 (?)</div>
+                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">低</div>
                     </div>
                 </div>
                 <div class="modal-actions"><button class="btn btn-cancel" @click="editForm = null">キャンセル</button><button class="btn btn-save" @click="saveTask">保存</button></div>
@@ -369,7 +369,6 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-                    // デフォルト普通(0)
                     this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
@@ -502,12 +501,9 @@
                 async moveToArchive(t) { if (!t.isForgotten) { t.isForgotten = true; await this.post('/api/archive', t); } },
                 async deleteTask(t) { if (confirm('完全削除しますか？')) await this.post('/api/delete', t); },
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
-                // ★修正: ソートロジック
                 applySort(l) { if (this.sortMode === 'category') { return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a))); } return l.sort((a, b) => this.getScore(b) - this.getScore(a)); },
-                // ★修正: スコアロジック (高10, 普5, 低1)
                 getScore(t) { return (t.priority === 1 ? 10 : (t.priority === 0 ? 5 : 1)); },
                 getPrioLabel(t) { return t.priority === 1 ? '高' : (t.priority === -1 ? '低' : ''); },
-                // ★修正: クラスマッピング (p-1:赤, p-3:黄/低, p-4:灰/普)
                 getPrioClass(t) { return t.priority === 1 ? 'p-1' : (t.priority === 0 ? 'p-4' : 'p-3'); },
                 formatTime(iso) { if (!iso) return ''; const d = new Date(iso); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); }
             }
