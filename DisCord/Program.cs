@@ -26,17 +26,13 @@ namespace TToDo
 
             // --- Web API Endpoints ---
 
-            // ★変更: 常に全員分のタスク(アーカイブ以外)を返す
             app.MapGet("/api/tasks", (HttpContext ctx) => {
                 lock (Globals.Lock)
                 {
-                    // クエリパラメータ(?uid=...)は無視して、常に全件返す
-                    // フロントエンド側で絞り込みを行うため
-                    return Results.Json(Globals.AllTasks.Where(t => !t.IsForgotten));
+                    return Results.Json(Globals.AllTasks);
                 }
             });
 
-            // タスク更新
             app.MapPost("/api/update", async (TaskItem item) => {
                 lock (Globals.Lock)
                 {
@@ -62,7 +58,6 @@ namespace TToDo
                 return Results.Ok();
             });
 
-            // チャンネル一括変更API
             app.MapPost("/api/batch/channel", async (BatchChannelRequest req) => {
                 lock (Globals.Lock)
                 {
@@ -73,7 +68,6 @@ namespace TToDo
                         return Results.BadRequest(new { message = "指定されたサーバーまたはチャンネルが見つかりません。Botが参加しているか確認してください。" });
                     }
 
-                    // 完了・未完了問わず、対象ユーザーの非アーカイブタスクを変更
                     var targets = Globals.AllTasks.Where(t => t.UserId == req.UserId && !t.IsForgotten);
                     foreach (var t in targets)
                     {
@@ -86,14 +80,24 @@ namespace TToDo
                 return Results.Ok();
             });
 
-            // Assignee API
-            app.MapGet("/api/assignees", () => { lock (Globals.Lock) return Results.Json(Globals.AssigneeGroups); });
-            app.MapPost("/api/assignees/update", async (List<AssigneeGroup> groups) => {
-                lock (Globals.Lock) { Globals.AssigneeGroups = groups; foreach (var group in groups) { foreach (var alias in group.Aliases) { var targets = Globals.AllTasks.Where(t => t.Assignee == alias); foreach (var t in targets) t.Assignee = group.MainName; } } Globals.SaveData(); }
+            // Assignee API は削除しました
+
+            app.MapPost("/api/archive/cleanup", async (CleanupRequest req) => {
+                lock (Globals.Lock)
+                {
+                    if (req.TargetUserNames != null && req.TargetUserNames.Count > 0)
+                    {
+                        Globals.AllTasks.RemoveAll(t => t.IsForgotten && req.TargetUserNames.Contains(t.UserName));
+                    }
+                    else
+                    {
+                        Globals.AllTasks.RemoveAll(t => t.IsForgotten);
+                    }
+                    Globals.SaveData();
+                }
                 return Results.Ok();
             });
 
-            // 既存API
             app.MapPost("/api/done", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = t.CompletedAt == null ? Globals.GetJstNow() : null; t.IsSnoozed = false; Globals.SaveData(); } } return Results.Ok(); });
             app.MapPost("/api/archive", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = true; Globals.SaveData(); } } return Results.Ok(); });
             app.MapPost("/api/restore", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });

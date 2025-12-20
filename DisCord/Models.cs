@@ -10,8 +10,8 @@ namespace TToDo
         // Discord情報
         public ulong ChannelId { get; set; }
         public ulong UserId { get; set; }
-        public string GuildName { get; set; } = "";   // サーバー名
-        public string ChannelName { get; set; } = ""; // チャンネル名
+        public string GuildName { get; set; } = "";
+        public string ChannelName { get; set; } = "";
 
         // ユーザー情報
         public string UserName { get; set; } = "";
@@ -36,17 +36,17 @@ namespace TToDo
         public string ReportTime { get; set; } = "00:00";
     }
 
-    public class AssigneeGroup
-    {
-        public string MainName { get; set; } = "";
-        public List<string> Aliases { get; set; } = new List<string>();
-    }
+    // AssigneeGroup は削除しました
 
-    // ★追加: 一括変更用のリクエスト型
     public class BatchChannelRequest
     {
         public ulong UserId { get; set; }
         public string GuildName { get; set; } = "";
         public string ChannelName { get; set; } = "";
+    }
+
+    public class CleanupRequest
+    {
+        public List<string> TargetUserNames { get; set; } = new List<string>();
     }
 }

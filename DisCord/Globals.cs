@@ -13,11 +13,11 @@ namespace TToDo
 
         private const string DbFileName = "tasks.json";
         private const string ConfigFileName = "config.json";
-        private const string AssigneesFileName = "assignees.json"; // ★追加
+        // assignees.json は不要になったため削除
 
         public static List<TaskItem> AllTasks = new List<TaskItem>();
         public static List<UserConfig> Configs = new List<UserConfig>();
-        public static List<AssigneeGroup> AssigneeGroups = new List<AssigneeGroup>(); // ★追加
+        // AssigneeGroups リスト削除
 
         public static readonly object Lock = new object();
         public static readonly TimeZoneInfo JstZone = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
@@ -37,7 +37,7 @@ namespace TToDo
             {
                 try { File.WriteAllText(DbFileName, JsonSerializer.Serialize(AllTasks)); } catch { }
                 try { File.WriteAllText(ConfigFileName, JsonSerializer.Serialize(Configs)); } catch { }
-                try { File.WriteAllText(AssigneesFileName, JsonSerializer.Serialize(AssigneeGroups)); } catch { } // ★追加
+                // AssigneeGroups 保存処理削除
             }
         }
 
@@ -47,7 +47,7 @@ namespace TToDo
             {
                 if (File.Exists(DbFileName)) try { AllTasks = JsonSerializer.Deserialize<List<TaskItem>>(File.ReadAllText(DbFileName)) ?? new(); } catch { }
                 if (File.Exists(ConfigFileName)) try { Configs = JsonSerializer.Deserialize<List<UserConfig>>(File.ReadAllText(ConfigFileName)) ?? new(); } catch { }
-                if (File.Exists(AssigneesFileName)) try { AssigneeGroups = JsonSerializer.Deserialize<List<AssigneeGroup>>(File.ReadAllText(AssigneesFileName)) ?? new(); } catch { } // ★追加
+                // AssigneeGroups 読込処理削除
             }
         }
     }
