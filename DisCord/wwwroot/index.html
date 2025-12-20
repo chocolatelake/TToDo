@@ -128,6 +128,29 @@
                 </button>
                 <button class="chip" @click="filterUsers = []" v-if="filterUsers.length > 0">クリア</button>
             </div>
+
+            <div class="filter-section">
+                <span class="filter-title">タグ:</span>
+                <button v-for="t in uniqueTags" :key="t" class="chip" :class="{selected: filterTags.includes(t)}" @click="toggleFilterTag(t)">
+                    {{ t === '(タグ未設定)' ? t : '#' + t }}
+                </button>
+                <button class="chip" @click="filterTags = []" v-if="filterTags.length > 0">クリア</button>
+            </div>
+
+            <div class="filter-section">
+                <span class="filter-title">優先度:</span>
+                <button class="chip" :class="{selected: filterPriorities.includes(1)}" @click="toggleFilterPriority(1)">高</button>
+                <button class="chip" :class="{selected: filterPriorities.includes(0)}" @click="toggleFilterPriority(0)">中</button>
+                <button class="chip" :class="{selected: filterPriorities.includes(-1)}" @click="toggleFilterPriority(-1)">低</button>
+                <button class="chip" @click="filterPriorities = []" v-if="filterPriorities.length > 0">クリア</button>
+            </div>
+
+            <div class="filter-section">
+                <span class="filter-title">サーバー:</span>
+                <button v-for="g in uniqueGuilds" :key="g" class="chip" :class="{selected: filterGuilds.includes(g)}" @click="toggleFilterGuild(g)">{{ g }}</button>
+                <button class="chip" @click="filterGuilds = []" v-if="filterGuilds.length > 0">クリア</button>
+            </div>
+
             <div class="filter-section">
                 <span class="filter-title">チャンネル:</span>
                 <button v-for="c in uniqueChannels" :key="c" class="chip" :class="{selected: filterChannels.includes(c)}" @click="toggleFilterChannel(c)">{{ c }}</button>
@@ -255,7 +278,7 @@
                     <div class="tag-controls">
                         <select class="form-control" v-model="selectedExistingTag" @change="addExistingTag" style="flex:1;">
                             <option value="">既存タグから追加...</option>
-                            <option v-for="t in uniqueTags" :value="t">{{ t }}</option>
+                            <option v-for="t in uniqueTags" :value="t" v-show="t !== '(タグ未設定)'">{{ t }}</option>
                         </select>
                         <input type="text" class="form-control" v-model="newTagInput" placeholder="新規タグ..." style="flex:1;" @keydown.enter.prevent="addNewTag">
                         <button class="btn" style="background:var(--border-color); padding:0 12px;" @click="addNewTag">＋</button>
@@ -364,7 +387,7 @@
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
                     isExportMode: false,
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
-                    showFilterMenu: false, filterUsers: [], filterChannels: [],
+                    showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [], // ★filterPriorities追加
                     newTagInput: '', selectedExistingTag: ''
                 }
             },
@@ -385,19 +408,69 @@
                     }
                     return list;
                 },
-                uniqueChannels() { return [...new Set(this.tasks.map(t => t.guildName + ' / ' + t.channelName).filter(n => n.length > 3))].sort(); },
+                uniqueChannels() {
+                    const channels = new Set();
+                    let hasEmpty = false;
+                    this.tasks.forEach(t => {
+                        if (t.guildName && t.channelName) {
+                            channels.add(t.guildName + ' / ' + t.channelName);
+                        } else {
+                            hasEmpty = true;
+                        }
+                    });
+                    const list = Array.from(channels).sort();
+                    if (hasEmpty) list.unshift('(未設定)');
+                    return list;
+                },
                 existingGuilds() { return [...new Set(this.tasks.map(t => t.guildName).filter(n => n))].sort(); },
-                uniqueTags() { return [...new Set(this.tasks.flatMap(t => t.tags))].sort(); },
+                uniqueGuilds() {
+                    const guilds = new Set(this.tasks.map(t => t.guildName).filter(n => n));
+                    const list = Array.from(guilds).sort();
+                    if (this.tasks.some(t => !t.guildName)) {
+                        list.unshift('(未設定)');
+                    }
+                    return list;
+                },
+                uniqueTags() {
+                    const tags = new Set(this.tasks.flatMap(t => t.tags));
+                    const list = Array.from(tags).sort();
+                    if (this.tasks.some(t => !t.tags || t.tags.length === 0)) {
+                        list.unshift('(タグ未設定)');
+                    }
+                    return list;
+                },
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
                     return this.tasks.filter(t => {
-                        // ★修正: userNameへのフォールバックを削除し、未設定の場合は「担当者未設定」でフィルタする
+                        // 1. 担当者フィルタ
                         const targetName = t.assignee || '担当者未設定';
                         if (this.filterUsers.length > 0 && !this.filterUsers.includes(targetName)) return false;
+
+                        // 2. サーバーフィルタ
+                        if (this.filterGuilds.length > 0) {
+                            const key = t.guildName || '(未設定)';
+                            if (!this.filterGuilds.includes(key)) return false;
+                        }
+
+                        // 3. チャンネルフィルタ
                         if (this.filterChannels.length > 0) {
-                            const key = t.guildName + ' / ' + t.channelName;
+                            const key = (t.guildName && t.channelName) ? (t.guildName + ' / ' + t.channelName) : '(未設定)';
                             if (!this.filterChannels.includes(key)) return false;
                         }
+
+                        // 4. タグフィルタ
+                        if (this.filterTags.length > 0) {
+                            if (this.filterTags.includes('(タグ未設定)') && (!t.tags || t.tags.length === 0)) {
+                                return true;
+                            }
+                            if (!t.tags || !t.tags.some(tag => this.filterTags.includes(tag))) return false;
+                        }
+
+                        // 5. 優先度フィルタ (★追加)
+                        if (this.filterPriorities.length > 0) {
+                            if (!this.filterPriorities.includes(t.priority)) return false;
+                        }
+
                         return true;
                     });
                 },
@@ -428,7 +501,6 @@
                 },
                 getAvatar(userName) {
                     if (userName === '担当者未設定') return '';
-                    // 検索時にも Assignee のみを対象にする（作成者画像は使わない）
                     const t = this.tasks.find(x => x.assignee === userName);
                     return t ? t.avatarUrl : '';
                 },
@@ -438,6 +510,9 @@
                 },
                 toggleFilterUser(u) { if (this.filterUsers.includes(u)) this.filterUsers = this.filterUsers.filter(x => x !== u); else this.filterUsers.push(u); },
                 toggleFilterChannel(c) { if (this.filterChannels.includes(c)) this.filterChannels = this.filterChannels.filter(x => x !== c); else this.filterChannels.push(c); },
+                toggleFilterTag(t) { if (this.filterTags.includes(t)) this.filterTags = this.filterTags.filter(x => x !== t); else this.filterTags.push(t); },
+                toggleFilterGuild(g) { if (this.filterGuilds.includes(g)) this.filterGuilds = this.filterGuilds.filter(x => x !== g); else this.filterGuilds.push(g); },
+                toggleFilterPriority(p) { if (this.filterPriorities.includes(p)) this.filterPriorities = this.filterPriorities.filter(x => x !== p); else this.filterPriorities.push(p); }, // ★追加
                 openBatchChannelModal() {
                     const lastTask = this.tasksActive.length > 0 ? this.tasksActive[0] : null;
                     this.batchForm = { guildName: lastTask ? lastTask.guildName : '', channelName: lastTask ? lastTask.channelName : '' };
