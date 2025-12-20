@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace TToDo
@@ -23,22 +24,15 @@ namespace TToDo
             Instance = this;
             var config = new DiscordSocketConfig
             {
-                // ★修正: GuildMembersを追加し、メンバーリスト取得権限を有効化
-                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers
+                // ★修正: GuildMembers を削除し、標準の権限に戻しました
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
             };
             _client = new DiscordSocketClient(config);
             _client.Log += msg => { Console.WriteLine($"[Bot] {msg}"); return Task.CompletedTask; };
             _client.MessageReceived += MessageReceivedAsync;
             _client.SelectMenuExecuted += SelectMenuHandler;
 
-            // ★修正: 接続時に全メンバー情報を強制ダウンロード
-            _client.Ready += async () =>
-            {
-                foreach (var guild in _client.Guilds)
-                {
-                    try { await guild.DownloadUsersAsync(); } catch { }
-                }
-            };
+            // ★修正: 強制ダウンロード処理を削除しました
         }
 
         public ulong? ResolveChannelId(string guildName, string channelName)
@@ -55,7 +49,7 @@ namespace TToDo
             if (_client == null || _client.ConnectionState != ConnectionState.Connected || string.IsNullOrEmpty(userName)) return "";
             foreach (var guild in _client.Guilds)
             {
-                // ユーザー検索: ユーザー名、ニックネーム、表示名のいずれかに一致
+                // キャッシュされている範囲でユーザーを検索
                 var user = guild.Users.FirstOrDefault(u =>
                     (u.Username != null && u.Username == userName) ||
                     (u.Nickname != null && u.Nickname == userName) ||
@@ -93,21 +87,18 @@ namespace TToDo
             }
             else return;
 
-            // 1. ヘルプ
             if (arg1.StartsWith("help", StringComparison.OrdinalIgnoreCase))
             {
                 await ShowHelp(message.Channel);
                 return;
             }
 
-            // 2. Webページ
             if (arg1.StartsWith("web", StringComparison.OrdinalIgnoreCase))
             {
                 await message.Channel.SendMessageAsync($"🌍 **TToDo Board:**\n{Globals.PublicUrl}");
                 return;
             }
 
-            // 3. 日報
             if (arg1.Equals("report today", StringComparison.OrdinalIgnoreCase) ||
                 arg1.Equals("report yesterday", StringComparison.OrdinalIgnoreCase))
             {
@@ -115,14 +106,12 @@ namespace TToDo
                 return;
             }
 
-            // 4. タスク一覧
             if (arg1.StartsWith("list", StringComparison.OrdinalIgnoreCase))
             {
                 await ShowCompactList(message.Channel, message.Author);
                 return;
             }
 
-            // 5. タスク追加
             if (!string.IsNullOrWhiteSpace(arg1))
             {
                 await AddNewTasks(message.Channel, message.Author, arg1, message);
@@ -148,7 +137,7 @@ namespace TToDo
             sb.AppendLine("`!ttodolist`");
             sb.AppendLine("自分の未完了タスク一覧を表示します。");
             sb.AppendLine("");
-            sb.AppendLine("`!ttodo report today`");
+            sb.AppendLine("`!ttodotoday`");
             sb.AppendLine("今日の完了タスク(日報)を表示します。");
             sb.AppendLine("");
             sb.AppendLine("`!ttodo web`");
@@ -161,12 +150,14 @@ namespace TToDo
         private async Task AddNewTasks(ISocketMessageChannel channel, SocketUser user, string rawText, SocketMessage message)
         {
             string assignee = user.Username;
+            // Discordから来たメッセージなので、ここで確実にアイコンを取得できます
             string avatar = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
 
             var mentionedUser = message.MentionedUsers.FirstOrDefault(u => !u.IsBot);
             if (mentionedUser != null)
             {
                 assignee = mentionedUser.Username;
+                // メンションされたユーザーのアイコンもここで確実に取得できます
                 avatar = mentionedUser.GetAvatarUrl() ?? mentionedUser.GetDefaultAvatarUrl();
                 rawText = rawText.Replace(mentionedUser.Mention, "").Replace($"<@!{mentionedUser.Id}>", "").Trim();
             }
@@ -268,7 +259,7 @@ namespace TToDo
                     .Where(t =>
                         !t.IsForgotten &&
                         (t.CompletedAt == null || t.CompletedAt >= today) &&
-                        ((!string.IsNullOrEmpty(t.Assignee) && t.Assignee == username) || (string.IsNullOrEmpty(t.Assignee) && t.UserId == userId))
+                        (!string.IsNullOrEmpty(t.Assignee) && t.Assignee == username)
                     )
                     .OrderByDescending(t => GetSortScore(t))
                     .ToList();
@@ -374,7 +365,6 @@ namespace TToDo
             catch { }
         }
 
-        // --- 機能実装: 日報表示 ---
         private async Task ShowReport(ISocketMessageChannel c, SocketUser u, string args)
         {
             var now = Globals.GetJstNow();
@@ -400,7 +390,7 @@ namespace TToDo
             {
                 l = Globals.AllTasks
                     .Where(x =>
-                        ((!string.IsNullOrEmpty(x.Assignee) && x.Assignee == u.Username) || (string.IsNullOrEmpty(x.Assignee) && x.UserId == u.Id))
+                        (!string.IsNullOrEmpty(x.Assignee) && x.Assignee == u.Username)
                         && x.CompletedAt != null && x.CompletedAt >= start && x.CompletedAt < end)
                     .OrderBy(x => x.CompletedAt)
                     .ToList();
@@ -417,7 +407,6 @@ namespace TToDo
             await c.SendMessageAsync(sb.ToString());
         }
 
-        // --- 機能実装: 自動日報 & 手動日報送信 ---
         public async Task<bool> SendManualReport(ReportRequest req)
         {
             var targetChannelId = ResolveChannelId(req.TargetGuild, req.TargetChannel);
@@ -500,7 +489,6 @@ namespace TToDo
                 return;
             }
 
-            // 設定がない場合は従来通り発生元へ送信
             DateTime reportStart = (now.Hour == 0 && now.Minute < 5) ? now.Date.AddDays(-1) : now.Date;
             List<TaskItem> reportTasks;
             lock (Globals.Lock) { reportTasks = Globals.AllTasks.Where(t => t.UserId == userId && t.CompletedAt != null && t.CompletedAt >= reportStart).ToList(); }
@@ -563,7 +551,6 @@ namespace TToDo
             return 1;
         }
 
-        // 優先度なしのときは [中]
         private string GetPriorityLabel(int p)
         {
             if (p == 1) return "高";

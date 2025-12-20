@@ -378,7 +378,6 @@
                     names.delete("Webで作成");
                     return Array.from(names).sort();
                 },
-                // ★ 絞り込み用のリスト: 未設定のタスクがある場合「担当者未設定」を追加
                 uniqueUsers() {
                     const list = [...this.allAssignees];
                     if (this.tasks.some(t => !t.assignee)) {
@@ -392,7 +391,7 @@
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
                     return this.tasks.filter(t => {
-                        // ★ 担当者判定: 空の場合は「担当者未設定」として扱う
+                        // ★修正: userNameへのフォールバックを削除し、未設定の場合は「担当者未設定」でフィルタする
                         const targetName = t.assignee || '担当者未設定';
                         if (this.filterUsers.length > 0 && !this.filterUsers.includes(targetName)) return false;
                         if (this.filterChannels.length > 0) {
@@ -427,10 +426,10 @@
                         this.loading = false;
                     } catch { }
                 },
-                // ★ アイコン取得用: 未設定の場合は空文字
                 getAvatar(userName) {
                     if (userName === '担当者未設定') return '';
-                    const t = this.tasks.find(x => x.assignee === userName || x.userName === userName);
+                    // 検索時にも Assignee のみを対象にする（作成者画像は使わない）
+                    const t = this.tasks.find(x => x.assignee === userName);
                     return t ? t.avatarUrl : '';
                 },
                 getChannelsForGuild(guildName) {
@@ -460,7 +459,6 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-                    // 新規作成時は Assignee 未設定 (空文字) にする
                     this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: '', userName: '', guildName: '', channelName: '' };
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
