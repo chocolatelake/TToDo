@@ -167,7 +167,7 @@
                     <span>🚀 進行中 <span class="count">{{ tasksActive.length }}</span></span>
                     <button class="btn-export" @click="exportList('active')" title="このリストのみコピー">📄</button>
                 </div>
-                <div class="task-container">
+                <div class="task-container" @dragover.prevent @drop.stop="onDrop($event, 'active')">
                     <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
@@ -196,7 +196,7 @@
                     <span>✅ 完了 <span class="count">{{ tasksDone.length }}</span></span>
                     <button class="btn-export" @click="exportList('done')" title="このリストのみコピー">📄</button>
                 </div>
-                <div class="task-container">
+                <div class="task-container" @dragover.prevent @drop.stop="onDrop($event, 'done')">
                     <div v-for="task in tasksDone" :key="task.id" class="card done-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
@@ -231,7 +231,7 @@
                         {{ filterUsers.length > 0 ? '🗑️表示分削除' : '🗑️全削除' }}
                     </button>
                 </div>
-                <div class="task-container">
+                <div class="task-container" @dragover.prevent @drop.stop="onDrop($event, 'archive')">
                     <div v-for="task in tasksArchive" :key="task.id" class="card archive-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
@@ -578,16 +578,13 @@
                     this.updateReportPreview();
                     this.showReportModal = true;
                 },
-                // ★修正: まとめて出力機能
                 exportList(type) {
                     this.isExportMode = true;
                     let text = "";
 
-                    // フィルタ適用中かどうかの判定
                     const isFiltered = this.filterUsers.length > 0 || this.filterChannels.length > 0 || this.filterTags.length > 0 || this.filterGuilds.length > 0 || this.filterPriorities.length > 0;
                     const filterNote = isFiltered ? " (絞り込み済み)" : "";
 
-                    // 共通のフォーマット関数
                     const formatTasks = (list, title, isDone = false) => {
                         if (list.length === 0) return "";
                         let res = `\n${title} (${list.length}件)\n`;
