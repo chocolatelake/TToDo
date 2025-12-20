@@ -108,6 +108,7 @@
                 <button class="btn-sort" @click="openCreateModal" style="color:var(--primary-color); border-color:var(--primary-color);">＋ 新規タスク</button>
                 <span class="divider">|</span>
                 <button class="btn-sort" @click="openReportModal">📋 日報作成</button>
+                <button class="btn-sort" @click="exportList('all')">📄 リスト出力</button>
                 <button class="btn-sort" @click="openConfigModal">⚙️ 設定</button>
                 <span class="divider">|</span>
                 <button class="btn-sort" @click="showFilterMenu = !showFilterMenu">🔍 絞り込み</button>
@@ -164,7 +165,7 @@
             <div class="column col-todo" @dragover.prevent @drop="onDrop($event, 'active')">
                 <div class="column-header">
                     <span>🚀 進行中 <span class="count">{{ tasksActive.length }}</span></span>
-                    <button class="btn-export" @click="exportList('active')" title="テキスト形式でコピー">📄</button>
+                    <button class="btn-export" @click="exportList('active')" title="このリストのみコピー">📄</button>
                 </div>
                 <div class="task-container">
                     <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
@@ -191,7 +192,10 @@
             </div>
 
             <div class="column col-done" @dragover.prevent @drop="onDrop($event, 'done')">
-                <div class="column-header">✅ 完了 <span class="count">{{ tasksDone.length }}</span></div>
+                <div class="column-header">
+                    <span>✅ 完了 <span class="count">{{ tasksDone.length }}</span></span>
+                    <button class="btn-export" @click="exportList('done')" title="このリストのみコピー">📄</button>
+                </div>
                 <div class="task-container">
                     <div v-for="task in tasksDone" :key="task.id" class="card done-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
@@ -219,7 +223,7 @@
                 <div class="column-header">
                     <div>
                         🗑️ アーカイブ <span class="count">{{ tasksArchive.length }}</span>
-                        <button class="btn-export" @click="exportList('archive')" title="テキスト形式でコピー">📄</button>
+                        <button class="btn-export" @click="exportList('archive')" title="このリストのみコピー">📄</button>
                     </div>
                     <button class="btn-icon-small" @click="cleanupArchive"
                             :title="filterUsers.length > 0 ? '表示中のユーザーのアーカイブを削除' : '全ユーザーのアーカイブを削除'"
@@ -387,7 +391,7 @@
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
                     isExportMode: false,
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
-                    showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [], // ★filterPriorities追加
+                    showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [],
                     newTagInput: '', selectedExistingTag: ''
                 }
             },
@@ -466,7 +470,7 @@
                             if (!t.tags || !t.tags.some(tag => this.filterTags.includes(tag))) return false;
                         }
 
-                        // 5. 優先度フィルタ (★追加)
+                        // 5. 優先度フィルタ
                         if (this.filterPriorities.length > 0) {
                             if (!this.filterPriorities.includes(t.priority)) return false;
                         }
@@ -512,7 +516,7 @@
                 toggleFilterChannel(c) { if (this.filterChannels.includes(c)) this.filterChannels = this.filterChannels.filter(x => x !== c); else this.filterChannels.push(c); },
                 toggleFilterTag(t) { if (this.filterTags.includes(t)) this.filterTags = this.filterTags.filter(x => x !== t); else this.filterTags.push(t); },
                 toggleFilterGuild(g) { if (this.filterGuilds.includes(g)) this.filterGuilds = this.filterGuilds.filter(x => x !== g); else this.filterGuilds.push(g); },
-                toggleFilterPriority(p) { if (this.filterPriorities.includes(p)) this.filterPriorities = this.filterPriorities.filter(x => x !== p); else this.filterPriorities.push(p); }, // ★追加
+                toggleFilterPriority(p) { if (this.filterPriorities.includes(p)) this.filterPriorities = this.filterPriorities.filter(x => x !== p); else this.filterPriorities.push(p); },
                 openBatchChannelModal() {
                     const lastTask = this.tasksActive.length > 0 ? this.tasksActive[0] : null;
                     this.batchForm = { guildName: lastTask ? lastTask.guildName : '', channelName: lastTask ? lastTask.channelName : '' };
@@ -574,27 +578,48 @@
                     this.updateReportPreview();
                     this.showReportModal = true;
                 },
+                // ★修正: まとめて出力機能
                 exportList(type) {
                     this.isExportMode = true;
-                    let list = [];
-                    let title = "";
-                    if (type === 'active') {
-                        list = this.tasksActive;
-                        title = "🚀 未完了タスク一覧";
-                    } else if (type === 'archive') {
-                        list = this.tasksArchive;
-                        title = "🗑️ アーカイブ一覧";
-                    }
+                    let text = "";
 
-                    if (list.length === 0) {
-                        this.reportPreview = "(タスクはありません)";
-                    } else {
-                        const lines = list.map(t => {
+                    // フィルタ適用中かどうかの判定
+                    const isFiltered = this.filterUsers.length > 0 || this.filterChannels.length > 0 || this.filterTags.length > 0 || this.filterGuilds.length > 0 || this.filterPriorities.length > 0;
+                    const filterNote = isFiltered ? " (絞り込み済み)" : "";
+
+                    // 共通のフォーマット関数
+                    const formatTasks = (list, title, isDone = false) => {
+                        if (list.length === 0) return "";
+                        let res = `\n${title} (${list.length}件)\n`;
+                        res += list.map(t => {
                             let prio = this.getPrioLabel(t);
                             if (prio) prio = `[${prio}] `;
-                            return `・${prio}${t.content}`;
-                        });
-                        this.reportPreview = `${title} (${list.length}件)\n\n` + lines.join('\n');
+                            let time = "";
+                            if (isDone && t.completedAt) {
+                                time = `[${this.formatTime(t.completedAt)}] `;
+                            }
+                            return `・${time}${prio}${t.content}`;
+                        }).join('\n');
+                        return res + "\n";
+                    };
+
+                    if (type === 'all') {
+                        text += `📊 タスク一覧出力${filterNote}\n`;
+                        text += formatTasks(this.tasksActive, "🚀 進行中");
+                        text += formatTasks(this.tasksDone, "✅ 完了", true);
+                        text += formatTasks(this.tasksArchive, "🗑️ アーカイブ");
+                    } else if (type === 'active') {
+                        text += formatTasks(this.tasksActive, `🚀 未完了タスク一覧${filterNote}`);
+                    } else if (type === 'done') {
+                        text += formatTasks(this.tasksDone, `✅ 完了タスク一覧${filterNote}`, true);
+                    } else if (type === 'archive') {
+                        text += formatTasks(this.tasksArchive, `🗑️ アーカイブ一覧${filterNote}`);
+                    }
+
+                    if (!text.trim()) {
+                        this.reportPreview = "(表示するタスクはありません)";
+                    } else {
+                        this.reportPreview = text.trim();
                     }
                     this.showReportModal = true;
                 },
