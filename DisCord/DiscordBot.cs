@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace TToDo
@@ -24,12 +23,22 @@ namespace TToDo
             Instance = this;
             var config = new DiscordSocketConfig
             {
-                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
+                // ★修正: GuildMembersを追加し、メンバーリスト取得権限を有効化
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent | GatewayIntents.GuildMembers
             };
             _client = new DiscordSocketClient(config);
             _client.Log += msg => { Console.WriteLine($"[Bot] {msg}"); return Task.CompletedTask; };
             _client.MessageReceived += MessageReceivedAsync;
             _client.SelectMenuExecuted += SelectMenuHandler;
+
+            // ★修正: 接続時に全メンバー情報を強制ダウンロード
+            _client.Ready += async () =>
+            {
+                foreach (var guild in _client.Guilds)
+                {
+                    try { await guild.DownloadUsersAsync(); } catch { }
+                }
+            };
         }
 
         public ulong? ResolveChannelId(string guildName, string channelName)
@@ -46,7 +55,12 @@ namespace TToDo
             if (_client == null || _client.ConnectionState != ConnectionState.Connected || string.IsNullOrEmpty(userName)) return "";
             foreach (var guild in _client.Guilds)
             {
-                var user = guild.Users.FirstOrDefault(u => u.Username == userName || u.Nickname == userName || u.DisplayName == userName);
+                // ユーザー検索: ユーザー名、ニックネーム、表示名のいずれかに一致
+                var user = guild.Users.FirstOrDefault(u =>
+                    (u.Username != null && u.Username == userName) ||
+                    (u.Nickname != null && u.Nickname == userName) ||
+                    (u.DisplayName != null && u.DisplayName == userName));
+
                 if (user != null) return user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
             }
             return "";
@@ -66,7 +80,6 @@ namespace TToDo
             string content = message.Content.Trim();
             string lower = content.ToLowerInvariant();
 
-            // ★6. コマンドはスペースで区切らない (短縮形対応)
             string arg1 = "";
             if (lower.StartsWith("!ttodolist")) arg1 = "list";
             else if (lower.StartsWith("!ttodohelp")) arg1 = "help";
@@ -94,7 +107,7 @@ namespace TToDo
                 return;
             }
 
-            // 3. 日報 (report today / report yesterday のみ)
+            // 3. 日報
             if (arg1.Equals("report today", StringComparison.OrdinalIgnoreCase) ||
                 arg1.Equals("report yesterday", StringComparison.OrdinalIgnoreCase))
             {
@@ -135,7 +148,7 @@ namespace TToDo
             sb.AppendLine("`!ttodolist`");
             sb.AppendLine("自分の未完了タスク一覧を表示します。");
             sb.AppendLine("");
-            sb.AppendLine("`!ttodo report today` (または `!ttodotoday`)");
+            sb.AppendLine("`!ttodo report today`");
             sb.AppendLine("今日の完了タスク(日報)を表示します。");
             sb.AppendLine("");
             sb.AppendLine("`!ttodo web`");
@@ -147,17 +160,14 @@ namespace TToDo
         // --- 機能実装: タスク追加 ---
         private async Task AddNewTasks(ISocketMessageChannel channel, SocketUser user, string rawText, SocketMessage message)
         {
-            // ★5. Discordでメンション飛ばしたらその人が担当者のタスクになる
             string assignee = user.Username;
             string avatar = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
 
-            // メンションがあれば担当者を変更
             var mentionedUser = message.MentionedUsers.FirstOrDefault(u => !u.IsBot);
             if (mentionedUser != null)
             {
                 assignee = mentionedUser.Username;
                 avatar = mentionedUser.GetAvatarUrl() ?? mentionedUser.GetDefaultAvatarUrl();
-                // 本文からメンション文字列を除去 (簡易的)
                 rawText = rawText.Replace(mentionedUser.Mention, "").Replace($"<@!{mentionedUser.Id}>", "").Trim();
             }
 
@@ -203,19 +213,18 @@ namespace TToDo
                 {
                     if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
 
-                    // 優先度判定
-                    int prio = 0; // 0: 普通
+                    int prio = 0;
                     string content = trimLine;
 
                     if (content.StartsWith("!") || content.StartsWith("！"))
                     {
-                        prio = 1; // 1: 高い
+                        prio = 1;
                         content = content.Substring(1);
                         if (content.StartsWith("!") || content.StartsWith("！")) content = content.Substring(1);
                     }
                     else if (content.StartsWith("?") || content.StartsWith("？"))
                     {
-                        prio = -1; // -1: 低い
+                        prio = -1;
                         content = content.Substring(1);
                         if (content.StartsWith("?") || content.StartsWith("？")) content = content.Substring(1);
                     }
@@ -227,9 +236,9 @@ namespace TToDo
                         {
                             ChannelId = channel.Id,
                             UserId = user.Id,
-                            UserName = user.Username, // 投稿者
-                            AvatarUrl = avatar,       // アイコンは担当者のものを使う
-                            Assignee = assignee,      // ★担当者
+                            UserName = user.Username,
+                            AvatarUrl = avatar,
+                            Assignee = assignee,
                             GuildName = guildName,
                             ChannelName = channelName,
                             Content = content,
@@ -255,12 +264,10 @@ namespace TToDo
             List<TaskItem> visibleTasks;
             lock (Globals.Lock)
             {
-                // ★2. & 9. webから追加したタスク(UserId違い)も、担当者(Assignee)が自分なら表示する
                 visibleTasks = Globals.AllTasks
                     .Where(t =>
                         !t.IsForgotten &&
                         (t.CompletedAt == null || t.CompletedAt >= today) &&
-                        // 担当者が自分、もしくは担当者未設定で自分が投稿したもの
                         ((!string.IsNullOrEmpty(t.Assignee) && t.Assignee == username) || (string.IsNullOrEmpty(t.Assignee) && t.UserId == userId))
                     )
                     .OrderByDescending(t => GetSortScore(t))
@@ -393,7 +400,6 @@ namespace TToDo
             {
                 l = Globals.AllTasks
                     .Where(x =>
-                        // ★担当者ベースで抽出
                         ((!string.IsNullOrEmpty(x.Assignee) && x.Assignee == u.Username) || (string.IsNullOrEmpty(x.Assignee) && x.UserId == u.Id))
                         && x.CompletedAt != null && x.CompletedAt >= start && x.CompletedAt < end)
                     .OrderBy(x => x.CompletedAt)
@@ -557,7 +563,7 @@ namespace TToDo
             return 1;
         }
 
-        // ★4. 優先度なしのときは [中]
+        // 優先度なしのときは [中]
         private string GetPriorityLabel(int p)
         {
             if (p == 1) return "高";

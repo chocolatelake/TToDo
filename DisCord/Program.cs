@@ -63,12 +63,14 @@ namespace TToDo
                         if (newId.HasValue) item.ChannelId = newId.Value;
                     }
 
-                    // 新規作成時のアイコン取得 (DBキャッシュ対応)
+                    // ★修正: 新規作成時のアイコン取得 (DBキャッシュ対応)
                     if (!string.IsNullOrEmpty(item.Assignee))
                     {
                         string newUrl = "";
+                        // 1. Discordから取得を試みる
                         if (DiscordBot.Instance != null) newUrl = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
 
+                        // 2. 失敗したら、既存タスクから同じ名前の人のアイコンを探す (バックアップ)
                         if (string.IsNullOrEmpty(newUrl))
                         {
                             var existing = Globals.AllTasks.FirstOrDefault(x =>
@@ -98,7 +100,7 @@ namespace TToDo
                             if (newId.HasValue) t.ChannelId = newId.Value;
                         }
 
-                        // ★修正: 担当者変更ロジック
+                        // ★修正: 更新時のアイコン取得ロジック
                         bool assigneeChanged = t.Assignee != item.Assignee;
 
                         if (assigneeChanged)
@@ -119,7 +121,7 @@ namespace TToDo
                                     if (existing != null) newUrl = existing.AvatarUrl;
                                 }
 
-                                // 取得できた場合のみ更新、なければ空にする（古い顔を残さない）
+                                // アイコン情報を更新 (取れなかったら空文字になるが、それでOK)
                                 t.AvatarUrl = newUrl;
                             }
                             // 担当者が外された場合
@@ -132,9 +134,8 @@ namespace TToDo
                         // 担当者は変わってないが、アイコン情報が欠落している場合 (再取得トライ)
                         else if (!string.IsNullOrEmpty(t.Assignee) && string.IsNullOrEmpty(t.AvatarUrl))
                         {
-                            // 1. Discord
                             if (DiscordBot.Instance != null) t.AvatarUrl = DiscordBot.Instance.ResolveAvatarUrl(t.Assignee);
-                            // 2. DBキャッシュ
+
                             if (string.IsNullOrEmpty(t.AvatarUrl))
                             {
                                 var existing = Globals.AllTasks.FirstOrDefault(x =>
