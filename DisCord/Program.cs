@@ -165,7 +165,8 @@ namespace TToDo
             var bot = new DiscordBot();
             await bot.StartAsync();
 
-            System.Console.WriteLine($"\n🚀 Dashboard is running at: {Globals.WebUrl.Replace("*", "localhost")}\n");
+            // 公開用URLを表示するように変更
+            System.Console.WriteLine($"\n🚀 Dashboard is running at: {Globals.PublicUrl}\n");
             await app.RunAsync();
         }
     }
