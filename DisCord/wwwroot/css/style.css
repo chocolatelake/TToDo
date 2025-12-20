@@ -211,6 +211,14 @@ h1 {
     border-left: 4px solid var(--danger);
 }
 
+.card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
 .task-content {
     flex: 1;
     word-break: break-word;
@@ -247,6 +255,56 @@ h1 {
 .time-tag {
     background: #dcfce7;
     color: #166534;
+}
+
+/* ★ Server & Channel Tags */
+.server-tag {
+    background: #e8e8e8;
+    color: #555;
+    border: 1px solid #ccc;
+    font-size: 0.65rem;
+    font-weight: 600;
+}
+
+.channel-tag {
+    background: #f3e5f5;
+    color: #7b1fa2;
+    border: 1px solid #e1bee7;
+    font-size: 0.65rem;
+    font-weight: 600;
+}
+
+/* User Avatar & Badge */
+.user-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 5px;
+    margin-bottom: 4px;
+    vertical-align: middle;
+    border: 1px solid #ddd;
+}
+
+.user-badge {
+    font-size: 0.75rem;
+    color: #666;
+    background: #f0f2f5;
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 4px;
+    font-weight: bold;
+}
+
+.assignee-badge {
+    background: #e3f2fd;
+    color: #1565c0;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: bold;
+    border: 1px solid #bbdefb;
 }
 
 .actions {
@@ -326,6 +384,12 @@ h1 {
     box-shadow: 0 10px 25px rgba(0,0,0,0.2);
 }
 
+    /* Modal Row Fix */
+    .modal .row {
+        display: flex;
+        gap: 5px;
+    }
+
 .form-group {
     margin-bottom: 15px;
 }
@@ -338,6 +402,57 @@ h1 {
     box-sizing: border-box;
     font-family: inherit;
 }
+
+/* Assignee Editor */
+.assignee-list-editor {
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 15px 0;
+    border: 1px solid #eee;
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.group-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.form-control.main-name {
+    flex: 1;
+    font-weight: bold;
+}
+
+.form-control.aliases {
+    flex: 2;
+    font-size: 0.9rem;
+}
+
+.arrow {
+    color: #ccc;
+}
+
+.btn-icon-small {
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.btn-add-group {
+    width: 100%;
+    padding: 8px;
+    border: 1px dashed #ccc;
+    background: #fafafa;
+    cursor: pointer;
+    color: #666;
+    margin-top: 5px;
+}
+
+    .btn-add-group:hover {
+        background: #eee;
+    }
 
 .chip-group {
     display: flex;
@@ -384,30 +499,6 @@ h1 {
     color: #333;
 }
 
-/* User Badge */
-.user-badge {
-    font-size: 0.75rem;
-    color: #666;
-    background: #f0f2f5;
-    padding: 2px 6px;
-    border-radius: 4px;
-    display: inline-block;
-    margin-bottom: 4px;
-    font-weight: bold;
-}
-
-/* User Avatar */
-.user-avatar {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    object-fit: cover;
-    margin-right: 5px;
-    margin-bottom: 4px;
-    vertical-align: middle;
-    border: 1px solid #ddd;
-}
-
 /* Mobile */
 @media (max-width: 768px) {
     body {
@@ -448,7 +539,7 @@ h1 {
         height: 36px;
     }
 
-    /* ヘッダー調整 */
+    /* Header Adjust */
     header {
         justify-content: center;
     }

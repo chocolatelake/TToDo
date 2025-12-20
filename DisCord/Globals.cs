@@ -8,23 +8,22 @@ namespace TToDo
 {
     public static class Globals
     {
-        // 設定
         public static string BotToken { get; set; } = "";
         public static string WebUrl { get; set; } = "http://*:5000";
 
-        // ファイル名
         private const string DbFileName = "tasks.json";
         private const string ConfigFileName = "config.json";
+        private const string AssigneesFileName = "assignees.json"; // ★追加
 
-        // 共有データ
         public static List<TaskItem> AllTasks = new List<TaskItem>();
         public static List<UserConfig> Configs = new List<UserConfig>();
+        public static List<AssigneeGroup> AssigneeGroups = new List<AssigneeGroup>(); // ★追加
+
         public static readonly object Lock = new object();
         public static readonly TimeZoneInfo JstZone = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
 
         public static DateTime GetJstNow() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, JstZone);
 
-        // 設定ロード
         public static void LoadConfiguration(IConfiguration config)
         {
             BotToken = config["Discord:Token"] ?? "";
@@ -32,23 +31,23 @@ namespace TToDo
             WebUrl = $"http://*:{port}";
         }
 
-        // 保存
         public static void SaveData()
         {
             lock (Lock)
             {
                 try { File.WriteAllText(DbFileName, JsonSerializer.Serialize(AllTasks)); } catch { }
                 try { File.WriteAllText(ConfigFileName, JsonSerializer.Serialize(Configs)); } catch { }
+                try { File.WriteAllText(AssigneesFileName, JsonSerializer.Serialize(AssigneeGroups)); } catch { } // ★追加
             }
         }
 
-        // 読み込み
         public static void LoadData()
         {
             lock (Lock)
             {
                 if (File.Exists(DbFileName)) try { AllTasks = JsonSerializer.Deserialize<List<TaskItem>>(File.ReadAllText(DbFileName)) ?? new(); } catch { }
                 if (File.Exists(ConfigFileName)) try { Configs = JsonSerializer.Deserialize<List<UserConfig>>(File.ReadAllText(ConfigFileName)) ?? new(); } catch { }
+                if (File.Exists(AssigneesFileName)) try { AssigneeGroups = JsonSerializer.Deserialize<List<AssigneeGroup>>(File.ReadAllText(AssigneesFileName)) ?? new(); } catch { } // ★追加
             }
         }
     }

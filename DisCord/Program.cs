@@ -14,39 +14,24 @@ namespace TToDo
     {
         static async Task Main(string[] args)
         {
-            // 1. 設定 & データ読み込み
             var builder = WebApplication.CreateBuilder(args);
             Globals.LoadConfiguration(builder.Configuration);
             Globals.LoadData();
 
-            // 2. Webサーバー構築
             builder.Logging.ClearProviders();
             builder.WebHost.UseUrls(Globals.WebUrl);
             var app = builder.Build();
 
-            // 静的ファイル(wwwroot内のindex.htmlなど)を使用
             app.UseFileServer();
 
             // --- Web API Endpoints ---
 
-            // タスク取得 (チームモード対応)
             app.MapGet("/api/tasks", (HttpContext ctx) => {
                 lock (Globals.Lock)
                 {
                     string mode = ctx.Request.Query["mode"];
-
-                    // チームモード: アーカイブ以外、全員分返す
-                    if (mode == "team")
-                    {
-                        return Results.Json(Globals.AllTasks.Where(t => !t.IsForgotten));
-                    }
-
-                    // 個人モード: 指定IDのみ
-                    if (ulong.TryParse(ctx.Request.Query["uid"], out ulong userId))
-                    {
-                        return Results.Json(Globals.AllTasks.Where(t => t.UserId == userId));
-                    }
-
+                    if (mode == "team") return Results.Json(Globals.AllTasks.Where(t => !t.IsForgotten));
+                    if (ulong.TryParse(ctx.Request.Query["uid"], out ulong userId)) return Results.Json(Globals.AllTasks.Where(t => t.UserId == userId));
                     return Results.Json(new List<TaskItem>());
                 }
             });
@@ -57,46 +42,61 @@ namespace TToDo
                     var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id);
                     if (t != null)
                     {
+                        if ((t.ChannelName != item.ChannelName || t.GuildName != item.GuildName) && DiscordBot.Instance != null)
+                        {
+                            var newId = DiscordBot.Instance.ResolveChannelId(item.GuildName, item.ChannelName);
+                            if (newId.HasValue) t.ChannelId = newId.Value;
+                        }
+
                         t.Content = item.Content;
                         t.Priority = item.Priority;
                         t.Difficulty = item.Difficulty;
                         t.Tags = item.Tags;
+                        t.Assignee = item.Assignee;
+                        t.GuildName = item.GuildName;
+                        t.ChannelName = item.ChannelName;
                         Globals.SaveData();
                     }
                 }
                 return Results.Ok();
             });
 
-            app.MapPost("/api/done", async (TaskItem item) => {
+            // ★変更: チャンネル一括変更API (完了タスクも対象にする)
+            app.MapPost("/api/batch/channel", async (BatchChannelRequest req) => {
                 lock (Globals.Lock)
                 {
-                    var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id);
-                    if (t != null)
+                    ulong? newChannelId = DiscordBot.Instance?.ResolveChannelId(req.GuildName, req.ChannelName);
+
+                    if (newChannelId == null)
                     {
-                        t.CompletedAt = t.CompletedAt == null ? Globals.GetJstNow() : null;
-                        t.IsSnoozed = false;
-                        Globals.SaveData();
+                        return Results.BadRequest(new { message = "指定されたサーバーまたはチャンネルが見つかりません。Botが参加しているか確認してください。" });
                     }
+
+                    // 変更点: !t.IsForgotten だけチェックし、CompletedAtのチェックを外しました
+                    var targets = Globals.AllTasks.Where(t => t.UserId == req.UserId && !t.IsForgotten);
+                    foreach (var t in targets)
+                    {
+                        t.GuildName = req.GuildName;
+                        t.ChannelName = req.ChannelName;
+                        t.ChannelId = newChannelId.Value;
+                    }
+                    Globals.SaveData();
                 }
                 return Results.Ok();
             });
 
-            app.MapPost("/api/archive", async (TaskItem item) => {
-                lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = true; Globals.SaveData(); } }
+            // Assignee API
+            app.MapGet("/api/assignees", () => { lock (Globals.Lock) return Results.Json(Globals.AssigneeGroups); });
+            app.MapPost("/api/assignees/update", async (List<AssigneeGroup> groups) => {
+                lock (Globals.Lock) { Globals.AssigneeGroups = groups; foreach (var group in groups) { foreach (var alias in group.Aliases) { var targets = Globals.AllTasks.Where(t => t.Assignee == alias); foreach (var t in targets) t.Assignee = group.MainName; } } Globals.SaveData(); }
                 return Results.Ok();
             });
 
-            app.MapPost("/api/restore", async (TaskItem item) => {
-                lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = false; Globals.SaveData(); } }
-                return Results.Ok();
-            });
+            app.MapPost("/api/done", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = t.CompletedAt == null ? Globals.GetJstNow() : null; t.IsSnoozed = false; Globals.SaveData(); } } return Results.Ok(); });
+            app.MapPost("/api/archive", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = true; Globals.SaveData(); } } return Results.Ok(); });
+            app.MapPost("/api/restore", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });
+            app.MapPost("/api/delete", async (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { Globals.AllTasks.Remove(t); Globals.SaveData(); } } return Results.Ok(); });
 
-            app.MapPost("/api/delete", async (TaskItem item) => {
-                lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { Globals.AllTasks.Remove(t); Globals.SaveData(); } }
-                return Results.Ok();
-            });
-
-            // 3. Discord Bot起動
             var bot = new DiscordBot();
             await bot.StartAsync();
 
