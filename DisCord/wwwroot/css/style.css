@@ -15,7 +15,7 @@ body {
     color: var(--text-color);
     margin: 0;
     padding: 0;
-    /* ★ スマホ対策: dvhを使用 */
+    /* スマホ対策: dvhを使用 */
     min-height: 100vh;
     min-height: 100dvh;
     width: 100vw;
@@ -133,3 +133,458 @@ h1 {
 .kanban-board {
     display: flex;
     flex-direction: row; /* Always horizontal */
+    gap: 15px;
+    flex: 1;
+    overflow-x: auto; /* Horizontal scroll allowed */
+    overflow-y: hidden; /* No vertical scroll on board itself */
+    align-items: flex-start;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 5px; /* Space for scrollbar */
+    /* スマホ対策: 高さ計算を dvh ベースに */
+    height: calc(100vh - 120px);
+    height: calc(100dvh - 120px);
+}
+
+/* Columns */
+.column {
+    flex: 1;
+    min-width: 300px;
+    background: var(--column-bg);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 100%;
+    box-sizing: border-box;
+    scroll-snap-align: center;
+    border: 1px solid rgba(0,0,0,0.02);
+}
+
+.column-header {
+    padding: 12px 16px;
+    font-weight: 700;
+    color: #42526e;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.4);
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.count {
+    background: rgba(0,0,0,0.1);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+}
+
+/* Column Border Colors */
+.col-todo .column-header {
+    border-top: 4px solid var(--primary-color);
+}
+
+.col-done .column-header {
+    border-top: 4px solid var(--success-color);
+}
+
+.col-archive .column-header {
+    border-top: 4px solid var(--danger-color);
+}
+
+/* Task List Area */
+.task-container {
+    flex: 1;
+    overflow-y: auto; /* Scroll vertically inside column */
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* --- Cards --- */
+.card {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    cursor: grab;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid transparent;
+}
+
+    .card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+        z-index: 10;
+    }
+
+    .card:active {
+        cursor: grabbing;
+        transform: scale(1.02);
+    }
+
+/* Priority Borders */
+.p-border {
+    border-left: 4px solid #ccc;
+}
+
+.p-1 {
+    border-left-color: #ED4245;
+}
+
+.p-2 {
+    border-left-color: #E67E22;
+}
+
+.p-3 {
+    border-left-color: #F1C40F;
+}
+
+.p-4 {
+    border-left-color: #95a5a6;
+}
+
+.done-card {
+    opacity: 0.8;
+    background: #f9f9f9;
+    border-left: 4px solid var(--success-color);
+}
+
+    .done-card .text {
+        text-decoration: line-through;
+        color: #888;
+    }
+
+.archive-card {
+    opacity: 0.6;
+    background: #f4f5f7;
+    border-left: 4px solid var(--danger-color);
+}
+
+/* Card Content */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    width: 100%;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.user-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #ddd;
+}
+
+.user-badge {
+    font-size: 0.75rem;
+    background: #eee;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+    color: #555;
+}
+
+.assignee-badge {
+    font-size: 0.7rem;
+    background: #e3f2fd;
+    color: #1565c0;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: bold;
+    border: 1px solid #bbdefb;
+}
+
+.actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.card:hover .actions {
+    opacity: 1;
+}
+
+.btn-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #eee;
+    background: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    transition: 0.2s;
+}
+
+    .btn-icon:hover {
+        background: #f0f0f0;
+        color: #333;
+        transform: scale(1.1);
+    }
+
+.btn-check:hover {
+    background: var(--success-color);
+    color: white;
+    border-color: var(--success-color);
+}
+
+.btn-return:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.btn-restore:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.btn-delete:hover {
+    background: #333;
+    color: white;
+    border-color: #333;
+}
+
+/* Text & Tags */
+.task-content {
+    width: 100%;
+}
+
+.text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    color: #333;
+    margin-top: 4px;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.tag {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: #e2e4e9;
+    color: #445;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+.prio-tag {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffe0b2;
+}
+
+.time-tag {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-color: #c8e6c9;
+}
+
+.server-tag {
+    background: #f3f4f6;
+    color: #374151;
+    border-color: #d1d5db;
+}
+
+.channel-tag {
+    background: #f3e8ff;
+    color: #7e22ce;
+    border-color: #e9d5ff;
+}
+
+/* --- Mobile Optimization (Vertical Orientation) --- */
+/* 幅が狭いデバイスでは、横スクロールレイアウトにする */
+@media (max-width: 768px) {
+    .kanban-board {
+        gap: 10px;
+        padding-right: 15px; /* End padding */
+        height: calc(100vh - 120px);
+    }
+
+    .column {
+        flex: 0 0 85vw; /* 85% of viewport width */
+        min-width: 300px;
+        height: 100%;
+    }
+
+    .actions {
+        opacity: 1; /* Always show actions on touch devices */
+    }
+
+    header {
+        justify-content: center;
+    }
+
+    .header-controls {
+        justify-content: center;
+        width: 100%;
+    }
+}
+
+/* --- Modals --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(2px);
+}
+
+.modal {
+    background: white;
+    width: 90%;
+    max-width: 500px;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+    .modal h3 {
+        margin: 0 0 5px 0;
+        color: var(--text-color);
+    }
+
+    .modal .row {
+        display: flex;
+        gap: 8px;
+    }
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+.chip-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.chip {
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    background: white;
+    transition: 0.2s;
+}
+
+    .chip:hover {
+        background: #f9f9f9;
+    }
+
+    .chip.selected {
+        background: var(--primary-color);
+        color: white;
+        border-color: var(--primary-color);
+    }
+
+.assignee-list-editor {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #eee;
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.group-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.form-control.main-name {
+    flex: 1;
+    font-weight: bold;
+}
+
+.form-control.aliases {
+    flex: 2;
+    font-size: 0.85rem;
+}
+
+.btn-add-group {
+    width: 100%;
+    padding: 8px;
+    border: 1px dashed #ccc;
+    background: #fafafa;
+    cursor: pointer;
+    color: #666;
+    margin-top: 5px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn {
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.btn-save {
+    background: var(--primary-color);
+    color: white;
+}
+
+.btn-cancel {
+    background: var(--border-color);
+    color: #333;
+}

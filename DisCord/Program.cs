@@ -63,14 +63,12 @@ namespace TToDo
                         if (newId.HasValue) item.ChannelId = newId.Value;
                     }
 
-                    // ★修正: 新規作成時のアイコン取得 (DBキャッシュ対応)
+                    // 新規作成時のアイコン取得 (DBキャッシュ対応)
                     if (!string.IsNullOrEmpty(item.Assignee))
                     {
                         string newUrl = "";
-                        // 1. Discordから取得を試みる
                         if (DiscordBot.Instance != null) newUrl = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
 
-                        // 2. 失敗したら、既存タスクから同じ名前の人のアイコンを探す
                         if (string.IsNullOrEmpty(newUrl))
                         {
                             var existing = Globals.AllTasks.FirstOrDefault(x =>
@@ -100,39 +98,49 @@ namespace TToDo
                             if (newId.HasValue) t.ChannelId = newId.Value;
                         }
 
-                        // ★修正: 更新時のアイコン取得 (DBキャッシュ対応)
+                        // ★修正: 担当者変更ロジック
                         bool assigneeChanged = t.Assignee != item.Assignee;
 
-                        // ターゲットとなる名前を決定 (変更があった場合は新しい担当者 or 外れたら作成者)
-                        string targetUser = assigneeChanged
-                            ? (!string.IsNullOrEmpty(item.Assignee) ? item.Assignee : t.UserName)
-                            : t.Assignee;
-
-                        // 担当者が変わった、または 現在アイコンがなくて担当者がいる場合
-                        if (assigneeChanged || (!string.IsNullOrEmpty(targetUser) && string.IsNullOrEmpty(t.AvatarUrl)))
+                        if (assigneeChanged)
                         {
-                            string newUrl = "";
-
-                            // 1. Discordから取得を試みる
-                            if (DiscordBot.Instance != null)
+                            // 担当者が設定された場合
+                            if (!string.IsNullOrEmpty(item.Assignee))
                             {
-                                newUrl = DiscordBot.Instance.ResolveAvatarUrl(targetUser);
-                            }
+                                string newUrl = "";
+                                // 1. Discordから取得
+                                if (DiscordBot.Instance != null) newUrl = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
 
-                            // 2. 失敗したら、既存のタスクDBから同じ名前の人のアイコンを探す (DBキャッシュ利用)
-                            if (string.IsNullOrEmpty(newUrl))
+                                // 2. 失敗時はDBキャッシュから取得
+                                if (string.IsNullOrEmpty(newUrl))
+                                {
+                                    var existing = Globals.AllTasks.FirstOrDefault(x =>
+                                        (x.Assignee == item.Assignee || x.UserName == item.Assignee)
+                                        && !string.IsNullOrEmpty(x.AvatarUrl));
+                                    if (existing != null) newUrl = existing.AvatarUrl;
+                                }
+
+                                // 取得できた場合のみ更新、なければ空にする（古い顔を残さない）
+                                t.AvatarUrl = newUrl;
+                            }
+                            // 担当者が外された場合
+                            else
+                            {
+                                // ★ここを変更: 作成者に戻すのではなく、完全に空にする
+                                t.AvatarUrl = "";
+                            }
+                        }
+                        // 担当者は変わってないが、アイコン情報が欠落している場合 (再取得トライ)
+                        else if (!string.IsNullOrEmpty(t.Assignee) && string.IsNullOrEmpty(t.AvatarUrl))
+                        {
+                            // 1. Discord
+                            if (DiscordBot.Instance != null) t.AvatarUrl = DiscordBot.Instance.ResolveAvatarUrl(t.Assignee);
+                            // 2. DBキャッシュ
+                            if (string.IsNullOrEmpty(t.AvatarUrl))
                             {
                                 var existing = Globals.AllTasks.FirstOrDefault(x =>
-                                    (x.Assignee == targetUser || x.UserName == targetUser)
+                                    (x.Assignee == t.Assignee || x.UserName == t.Assignee)
                                     && !string.IsNullOrEmpty(x.AvatarUrl));
-                                if (existing != null) newUrl = existing.AvatarUrl;
-                            }
-
-                            // 変更があった場合、または有効なURLが見つかった場合にセット
-                            // (担当者を外してWeb作成者に戻った場合などは newUrl が空になるが、それで正解なのでセットする)
-                            if (assigneeChanged || !string.IsNullOrEmpty(newUrl))
-                            {
-                                t.AvatarUrl = newUrl;
+                                if (existing != null) t.AvatarUrl = existing.AvatarUrl;
                             }
                         }
 
