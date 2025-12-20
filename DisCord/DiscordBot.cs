@@ -14,7 +14,8 @@ namespace TToDo
     {
         private DiscordSocketClient _client;
 
-        public static DiscordBot Instance { get; private set; }
+        // Null許容型に戻します
+        public static DiscordBot? Instance { get; private set; }
         public DiscordSocketClient Client => _client;
 
         private static readonly List<string> DefaultPrefixes = new List<string> { " ", "　", "\t", "→", "：", ":", "・", "※", ">", "-", "+", "*", "■", "□", "●", "○" };
@@ -23,7 +24,11 @@ namespace TToDo
         public DiscordBot()
         {
             Instance = this;
-            var config = new DiscordSocketConfig { GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent };
+            // ★修正: 余計な権限(GuildMembers)を削除し、元の設定に戻しました
+            var config = new DiscordSocketConfig
+            {
+                GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.MessageContent
+            };
             _client = new DiscordSocketClient(config);
             _client.Log += msg => { Console.WriteLine($"[Bot] {msg}"); return Task.CompletedTask; };
             _client.MessageReceived += MessageReceivedAsync;
@@ -171,31 +176,19 @@ namespace TToDo
         private async Task ExportData(ISocketMessageChannel c, SocketUser u) { string j; lock (Globals.Lock) j = JsonSerializer.Serialize(Globals.AllTasks.Where(x => x.UserId == u.Id), new JsonSerializerOptions { WriteIndented = true }); if (j.Length > 1900) { File.WriteAllText("e.json", j); await c.SendFileAsync("e.json"); } else await c.SendMessageAsync($"```json\n{j}\n```"); }
         private async Task ImportData(ISocketMessageChannel c, string j) { try { var l = JsonSerializer.Deserialize<List<TaskItem>>(j); if (l != null) { lock (Globals.Lock) { foreach (var i in l) { Globals.AllTasks.RemoveAll(x => x.Id == i.Id); Globals.AllTasks.Add(i); } Globals.SaveData(); } await c.SendMessageAsync($"📥 {l.Count}件"); } } catch { } }
 
-        // ★修正: 「完了済みの古いタスク」のみを自動削除し、アーカイブ（未完了）は保持する
         private async Task RunDailyClose(ulong userId, ISocketMessageChannel feedbackChannel = null)
         {
             var now = Globals.GetJstNow();
-
-            // 削除対象: 「一昨日以前」かつ「完了済み」のタスク
-            // 未完了のままアーカイブされたものは、CompletedAtがnullなので削除されない
             var deleteThreshold = now.Date.AddDays(-1);
-
             lock (Globals.Lock)
             {
                 int removedCount = Globals.AllTasks.RemoveAll(t => t.CompletedAt != null && t.CompletedAt < deleteThreshold);
                 if (removedCount > 0) Globals.SaveData();
             }
 
-            // レポート送信
             DateTime reportStart;
-            if (now.Hour == 0 && now.Minute < 5)
-            {
-                reportStart = now.Date.AddDays(-1);
-            }
-            else
-            {
-                reportStart = now.Date;
-            }
+            if (now.Hour == 0 && now.Minute < 5) reportStart = now.Date.AddDays(-1);
+            else reportStart = now.Date;
 
             List<TaskItem> reportTasks;
             lock (Globals.Lock)

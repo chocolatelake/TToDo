@@ -16,6 +16,8 @@
             </div>
 
             <div class="header-controls">
+                <button class="btn-sort" @click="openCreateModal" style="color:var(--primary-color); border-color:var(--primary-color);">＋ 新規タスク</button>
+                <span class="divider">|</span>
                 <button class="btn-sort" @click="showFilterMenu = !showFilterMenu">🔍 絞り込み</button>
                 <span class="divider">|</span>
                 <button v-if="userId" class="btn-sort" @click="openBatchChannelModal">📡 送信先一括</button>
@@ -47,9 +49,8 @@
                     <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.userName">
-                            <span v-else class="user-badge">{{ task.userName }}</span>
-                            <span v-if="task.assignee && task.assignee !== task.userName" class="assignee-badge">➡️ {{ task.assignee }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || task.userName">
+                            <span v-else class="user-badge">{{ task.assignee || task.userName }}</span>
                         </div>
                         <div class="task-content">
                             <div class="tags">
@@ -73,9 +74,8 @@
                     <div v-for="task in tasksDone" :key="task.id" class="card done-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.userName">
-                            <span v-else class="user-badge">{{ task.userName }}</span>
-                            <span v-if="task.assignee && task.assignee !== task.userName" class="assignee-badge">➡️ {{ task.assignee }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || task.userName">
+                            <span v-else class="user-badge">{{ task.assignee || task.userName }}</span>
                         </div>
                         <div class="task-content">
                             <div class="tags">
@@ -105,8 +105,8 @@
                     <div v-for="task in tasksArchive" :key="task.id" class="card archive-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.userName">
-                            <span v-else class="user-badge">{{ task.userName }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || task.userName">
+                            <span v-else class="user-badge">{{ task.assignee || task.userName }}</span>
                         </div>
                         <div class="task-content">
                             <div class="text">{{ task.content }}</div>
@@ -120,32 +120,32 @@
             </div>
         </div>
 
-        <div v-if="editingTask" class="modal-overlay" @click.self="editingTask = null">
+        <div v-if="editForm" class="modal-overlay" @click.self="editForm = null">
             <div class="modal">
-                <h3>タスク編集</h3>
+                <h3>{{ isCreating ? '新規タスク' : 'タスク編集' }}</h3>
                 <div class="form-group"><label>内容</label><textarea class="form-control" rows="3" v-model="editForm.content"></textarea></div>
 
                 <div class="form-group">
                     <label>担当者 (Assignee)</label>
-                    <select class="form-control" v-model="editForm.assignee">
-                        <option v-for="name in allAssignees" :value="name">{{ name }}</option>
-                    </select>
+                    <input type="text" class="form-control" v-model="editForm.assignee" list="assigneeList" placeholder="名前を入力...">
+                    <datalist id="assigneeList">
+                        <option v-for="name in allAssignees" :value="name"></option>
+                    </datalist>
                 </div>
 
                 <div class="form-group">
                     <label>送信先 (サーバー / チャンネル)</label>
                     <div class="row">
                         <select class="form-control" v-model="editForm.guildName" @change="editForm.channelName = ''">
-                            <option disabled value="">サーバー選択</option>
+                            <option value="">(未設定)</option>
                             <option v-for="g in existingGuilds" :value="g">{{ g }}</option>
                         </select>
                         <span style="align-self:center">/</span>
                         <select class="form-control" v-model="editForm.channelName">
-                            <option disabled value="">チャンネル選択</option>
+                            <option value="">(未設定)</option>
                             <option v-for="c in getChannelsForGuild(editForm.guildName)" :value="c">{{ c }}</option>
                         </select>
                     </div>
-                    <div style="font-size:0.75rem; color:#888; margin-top:4px;">※リストにない場合は、Discordで一度タスクを追加してください。</div>
                 </div>
 
                 <div class="form-group"><label>タグ</label><input type="text" class="form-control" v-model="editForm.tagsStr"></div>
@@ -158,8 +158,8 @@
                     </div>
                 </div>
                 <div class="modal-actions">
-                    <button class="btn btn-cancel" @click="editingTask = null">キャンセル</button>
-                    <button class="btn btn-save" @click="saveEdit">保存</button>
+                    <button class="btn btn-cancel" @click="editForm = null">キャンセル</button>
+                    <button class="btn btn-save" @click="saveTask">保存</button>
                 </div>
             </div>
         </div>
@@ -168,7 +168,6 @@
             <div class="modal" style="max-width: 450px;">
                 <h3>📡 送信先の一括変更</h3>
                 <p style="font-size:0.9rem; color:#555;">あなたの<b>「アーカイブ以外の全タスク」</b>の日報送信先を、以下に変更します。</p>
-
                 <div class="form-group">
                     <label>サーバー</label>
                     <select class="form-control" v-model="batchForm.guildName" @change="batchForm.channelName = ''">
@@ -183,7 +182,6 @@
                         <option v-for="c in getChannelsForGuild(batchForm.guildName)" :value="c">{{ c }}</option>
                     </select>
                 </div>
-
                 <div style="font-size:0.8rem; color:#e00; margin-bottom:15px;" v-if="batchError">{{ batchError }}</div>
                 <div class="modal-actions">
                     <button class="btn btn-cancel" @click="showBatchModal = false">キャンセル</button>
@@ -198,7 +196,8 @@
         createApp({
             data() {
                 return {
-                    tasks: [], loading: true, editingTask: null, editForm: {}, sortMode: 'priority', userId: null, myUserId: null,
+                    tasks: [], loading: true, editForm: null, isCreating: false,
+                    sortMode: 'priority', userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
                     showFilterMenu: false, filterUsers: [], filterChannels: []
                 }
@@ -252,7 +251,7 @@
             },
             methods: {
                 async fetchTasks() {
-                    if (this.editingTask || this.showBatchModal) return;
+                    if (this.editForm || this.showBatchModal) return;
                     try { const r = await fetch('/api/tasks'); this.tasks = await r.json(); this.loading = false; } catch { }
                 },
                 getChannelsForGuild(guildName) {
@@ -289,9 +288,7 @@
                     let msg = '';
                     if (targets.length > 0) msg = `現在絞り込まれている以下のユーザーのアーカイブのみを削除します。\n対象: ${targets.join(', ')}`;
                     else msg = 'すべてのユーザーのアーカイブを完全に削除します。\n（絞り込みを行っていません）';
-
                     if (!confirm(msg + '\n\nこの操作は取り消せません。よろしいですか？')) return;
-
                     await fetch('/api/archive/cleanup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -299,8 +296,51 @@
                     });
                     this.fetchTasks();
                 },
-                openEdit(task) { this.editingTask = task; this.editForm = { ...task, tagsStr: task.tags.join(', ') }; },
-                async saveEdit() { const p = { ...this.editForm, tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s) }; await this.post('/api/update', p); this.editingTask = null; },
+
+                openCreateModal() {
+                    this.isCreating = true;
+                    this.editForm = {
+                        content: '',
+                        priority: -1,
+                        difficulty: -1,
+                        tagsStr: '',
+                        assignee: this.myUserName || '',
+                        userName: this.myUserName || '',
+                        guildName: '',
+                        channelName: ''
+                    };
+                },
+                openEdit(task) {
+                    this.isCreating = false;
+                    this.editForm = { ...task, tagsStr: task.tags.join(', ') };
+                },
+                async saveTask() {
+                    if (!this.editForm.content) { alert('内容を入力してください'); return; }
+
+                    const payload = {
+                        ...this.editForm,
+                        tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s)
+                    };
+
+                    if (this.isCreating) {
+                        if (this.myUserId) payload.userId = this.myUserId;
+                        else {
+                            const u = this.tasks.find(t => t.userName === payload.userName);
+                            if (u) payload.userId = u.userId;
+                        }
+                    }
+
+                    const url = this.isCreating ? '/api/create' : '/api/update';
+                    await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    this.editForm = null;
+                    this.fetchTasks();
+                },
+
                 onDragStart(evt, t) { evt.dataTransfer.dropEffect = 'move'; evt.dataTransfer.effectAllowed = 'move'; evt.dataTransfer.setData('taskId', t.id); },
                 onDrop(evt, s) { const id = evt.dataTransfer.getData('taskId'); const t = this.tasks.find(x => x.id === id); if (t) { if (s === 'active') this.moveToActive(t); else if (s === 'done') this.moveToDone(t); else this.moveToArchive(t); } },
                 async moveToDone(t) { if (t.isForgotten) await this.post('/api/restore', t); if (!t.completedAt) { t.completedAt = new Date().toISOString(); await this.post('/api/done', t); } },
