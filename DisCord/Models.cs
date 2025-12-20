@@ -8,7 +8,8 @@ namespace TToDo
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
         public ulong ChannelId { get; set; }
         public ulong UserId { get; set; }
-        public string UserName { get; set; } = ""; // ユーザー名
+        public string UserName { get; set; } = "";
+        public string AvatarUrl { get; set; } = ""; // ★追加: アイコンURL
         public string Content { get; set; } = "";
         public int Priority { get; set; } = -1;
         public int Difficulty { get; set; } = -1;

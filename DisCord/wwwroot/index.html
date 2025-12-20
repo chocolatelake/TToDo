@@ -14,7 +14,6 @@
             <div class="header-left">
                 <h1>TToDo Board</h1>
             </div>
-
             <div class="sort-controls">
                 <span class="sort-label">並び順:</span>
                 <button class="btn-sort" :class="{active: sortMode==='priority'}" @click="sortMode='priority'">🔥 優先度</button>
@@ -31,6 +30,10 @@
                 <div class="task-container">
                     <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+
+                        <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.userName">
+                        <div v-else-if="task.userName" class="user-badge">👤 {{ task.userName }}</div>
+
                         <div class="task-content">
                             <div class="tags">
                                 <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
@@ -50,6 +53,10 @@
                 <div class="task-container">
                     <div v-for="task in tasksDone" :key="task.id" class="card done-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+
+                        <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.userName">
+                        <div v-else-if="task.userName" class="user-badge">👤 {{ task.userName }}</div>
+
                         <div class="task-content">
                             <div class="tags">
                                 <span class="tag time-tag">{{ formatTime(task.completedAt) }}</span>
@@ -69,6 +76,10 @@
                 <div class="task-container">
                     <div v-for="task in tasksArchive" :key="task.id" class="card archive-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+
+                        <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.userName">
+                        <div v-else-if="task.userName" class="user-badge">👤 {{ task.userName }}</div>
+
                         <div class="task-content">
                             <div class="text">{{ task.content }}</div>
                         </div>
@@ -106,18 +117,8 @@
     <script>
         const { createApp } = Vue
         createApp({
-            data() {
-                return {
-                    tasks: [],
-                    loading: true,
-                    editingTask: null,
-                    editForm: {},
-                    sortMode: 'priority',
-                    userId: null // ★追加: 自分のID
-                }
-            },
+            data() { return { tasks: [], loading: true, editingTask: null, editForm: {}, sortMode: 'priority', userId: null } },
             computed: {
-                // ... (computedはそのまま) ...
                 tasksActive() {
                     let list = this.tasks.filter(t => !t.isForgotten && !t.completedAt);
                     return this.applySort(list);
@@ -135,26 +136,24 @@
                 }
             },
             mounted() {
-                // ★追加: URLから ?uid=... を取得して記憶する
                 const params = new URLSearchParams(window.location.search);
                 const uidParam = params.get('uid');
+                const modeParam = params.get('mode');
 
-                if (uidParam) {
+                if (modeParam === 'team') {
+                    this.userId = 'team';
+                } else if (uidParam) {
                     this.userId = uidParam;
-                    localStorage.setItem('ttodo_uid', uidParam); // 次回用に保存
+                    localStorage.setItem('ttodo_uid', uidParam);
+                    window.history.replaceState({}, '', window.location.pathname);
                 } else {
-                    this.userId = localStorage.getItem('ttodo_uid'); // 保存されたIDを使う
+                    this.userId = localStorage.getItem('ttodo_uid');
                 }
 
-                if (!this.userId) {
-                    alert('⚠️ ユーザーIDが見つかりません。\nDiscordで「!ttodo web」と入力して、専用URLからアクセスしてください。');
+                if (!this.userId && !modeParam) {
+                    alert('⚠️ URLが無効です。Discordで「!ttodo web」または「!ttodo web team」と入力してください。');
                     this.loading = false;
                     return;
-                }
-
-                // URLを見やすくする（?uid=...を消す演出）
-                if (uidParam) {
-                    window.history.replaceState({}, '', window.location.pathname);
                 }
 
                 this.fetchTasks();
@@ -162,24 +161,18 @@
             },
             methods: {
                 async fetchTasks() {
-                    if (this.editingTask || !this.userId) return;
+                    if (this.editingTask) return;
                     try {
-                        // ★変更: 自分のIDをサーバーに伝える
-                        const r = await fetch(`/api/tasks?uid=${this.userId}`);
+                        let url = '/api/tasks';
+                        const params = new URLSearchParams(window.location.search);
+                        if (params.get('mode') === 'team') { url += '?mode=team'; }
+                        else if (this.userId) { url += `?uid=${this.userId}`; }
+
+                        const r = await fetch(url);
                         this.tasks = await r.json();
                         this.loading = false;
                     } catch { }
                 },
-
-                // ... (中略: Drag & Dropなどはそのまま) ...
-                // ... (中略: onDragStart, onDrop, moveToDone, etc...) ...
-
-                // ★重要: タスク作成時はサーバー側でUserId判別できないので、Webから送る必要があるかも？
-                // 現状の仕様だと「Webからの新規作成」ボタンはまだ無いので、
-                // 編集(saveEdit)等のAPIは「タスクID」で検索してるからそのままでOK。
-                // ※もし将来Webから新規作成するなら、payloadにUserIdを含める必要があります。
-
-                // applySortなどのUtils系もそのまま...
                 applySort(list) {
                     if (this.sortMode === 'category') {
                         return list.sort((a, b) => {

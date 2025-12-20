@@ -71,6 +71,9 @@ namespace TToDo
 
         private async Task AddNewTasks(ISocketMessageChannel channel, SocketUser user, string rawText)
         {
+            // ★変更: ユーザーのアイコンURLを取得
+            string avatar = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
+
             var lines = rawText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             var addedTasks = new List<TaskItem>();
             List<string> currentTags = new List<string>();
@@ -113,11 +116,13 @@ namespace TToDo
 
                     if (!string.IsNullOrWhiteSpace(content))
                     {
+                        // ★変更: AvatarUrl を保存
                         pendingTask = new TaskItem
                         {
                             ChannelId = channel.Id,
                             UserId = user.Id,
-                            UserName = user.Username, // ユーザー名保存
+                            UserName = user.Username,
+                            AvatarUrl = avatar, // ← これを追加
                             Content = content,
                             Priority = prio,
                             Difficulty = diff,
@@ -300,7 +305,6 @@ namespace TToDo
             catch { }
         }
 
-        // ヘルパーメソッド群 (前回抜けていたものを含む)
         private int GetSortScore(TaskItem t) { if (t.CompletedAt != null) return -10; if (t.IsSnoozed) return -1; if (t.Priority == 1 && t.Difficulty == 1) return 10; if (t.Priority == 1) return 9; if (t.Priority == -1) return 5; if (t.Priority == 0 && t.Difficulty == 1) return 2; return 1; }
         private string GetPriorityLabel(int p, int d) { if (p == 1 && d == 1) return "1"; if (p == 1 && d == 0) return "2"; if (p == 0 && d == 1) return "3"; if (p == 0 && d == 0) return "4"; return "-"; }
 
@@ -340,8 +344,6 @@ namespace TToDo
         }
 
         private async Task ShowTagModal(SocketMessageComponent c) { string rid = c.Data.CustomId.Substring(11); await c.RespondWithModalAsync(new ModalBuilder().WithTitle("新規タグ").WithCustomId($"modal_tag_{rid}").AddTextInput("タグ名", "n", value: "", required: true).Build()); }
-
-        // --- Export/Import/Report/Close ---
 
         private async Task ShowReport(ISocketMessageChannel c, SocketUser u, string a)
         {
