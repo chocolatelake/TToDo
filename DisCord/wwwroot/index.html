@@ -7,6 +7,37 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* タグ編集用の追加スタイル */
+        .edit-tag {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+        }
+
+        .remove-tag {
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.8;
+        }
+
+            .remove-tag:hover {
+                opacity: 1;
+            }
+
+        .tag-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+    </style>
 </head>
 <body>
     <div id="app" class="app-container">
@@ -127,11 +158,15 @@
             <div class="modal">
                 <h3>{{ isCreating ? '新規タスク' : 'タスク編集' }}</h3>
                 <div class="form-group"><label>内容</label><textarea class="form-control" rows="3" v-model="editForm.content"></textarea></div>
+
                 <div class="form-group">
                     <label>担当者 (Assignee)</label>
-                    <input type="text" class="form-control" v-model="editForm.assignee" list="assigneeList" placeholder="名前を入力...">
-                    <datalist id="assigneeList"><option v-for="name in allAssignees" :value="name"></option></datalist>
+                    <select class="form-control" v-model="editForm.assignee">
+                        <option value="">(未設定)</option>
+                        <option v-for="name in allAssignees" :value="name">{{ name }}</option>
+                    </select>
                 </div>
+
                 <div class="form-group">
                     <label>送信先 (サーバー / チャンネル)</label>
                     <div class="row">
@@ -139,7 +174,24 @@
                         <select class="form-control" v-model="editForm.channelName"><option value="">(未設定)</option><option v-for="c in getChannelsForGuild(editForm.guildName)" :value="c">{{ c }}</option></select>
                     </div>
                 </div>
-                <div class="form-group"><label>タグ</label><input type="text" class="form-control" v-model="editForm.tagsStr"></div>
+
+                <div class="form-group">
+                    <label>タグ</label>
+                    <div style="margin-bottom: 5px;">
+                        <span v-for="tag in editForm.tags" class="tag edit-tag">
+                            #{{ tag }} <span class="remove-tag" @click="removeTag(tag)">×</span>
+                        </span>
+                    </div>
+                    <div class="tag-controls">
+                        <select class="form-control" v-model="selectedExistingTag" @change="addExistingTag" style="flex:1;">
+                            <option value="">既存タグから追加...</option>
+                            <option v-for="t in uniqueTags" :value="t">{{ t }}</option>
+                        </select>
+                        <input type="text" class="form-control" v-model="newTagInput" placeholder="新規タグ..." style="flex:1;" @keydown.enter.prevent="addNewTag">
+                        <button class="btn" style="background:var(--border-color); padding:0 12px;" @click="addNewTag">＋</button>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label>優先度</label>
                     <div class="chip-group">
@@ -241,7 +293,9 @@
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
-                    showFilterMenu: false, filterUsers: [], filterChannels: []
+                    showFilterMenu: false, filterUsers: [], filterChannels: [],
+                    // タグ編集用
+                    newTagInput: '', selectedExistingTag: ''
                 }
             },
             computed: {
@@ -253,6 +307,8 @@
                 uniqueUsers() { return [...new Set(this.tasks.map(t => t.userName).filter(n => n))].sort(); },
                 uniqueChannels() { return [...new Set(this.tasks.map(t => t.guildName + ' / ' + t.channelName).filter(n => n.length > 3))].sort(); },
                 existingGuilds() { return [...new Set(this.tasks.map(t => t.guildName).filter(n => n))].sort(); },
+                // 全タスクからユニークなタグを抽出
+                uniqueTags() { return [...new Set(this.tasks.flatMap(t => t.tags))].sort(); },
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
                     return this.tasks.filter(t => {
@@ -316,12 +372,37 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-                    this.editForm = { content: '', priority: -1, difficulty: -1, tagsStr: '', assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
+                    // tags配列で管理するように変更
+                    this.editForm = { content: '', priority: -1, difficulty: -1, tags: [], assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
+                    this.newTagInput = ''; this.selectedExistingTag = '';
                 },
-                openEdit(task) { this.isCreating = false; this.editForm = { ...task, tagsStr: task.tags.join(', ') }; },
+                openEdit(task) {
+                    this.isCreating = false;
+                    // 既存タスクのタグをコピー
+                    this.editForm = { ...task, tags: [...task.tags] };
+                    this.newTagInput = ''; this.selectedExistingTag = '';
+                },
+                // タグ追加削除処理
+                removeTag(tag) {
+                    this.editForm.tags = this.editForm.tags.filter(t => t !== tag);
+                },
+                addExistingTag() {
+                    if (this.selectedExistingTag && !this.editForm.tags.includes(this.selectedExistingTag)) {
+                        this.editForm.tags.push(this.selectedExistingTag);
+                    }
+                    this.selectedExistingTag = '';
+                },
+                addNewTag() {
+                    const t = this.newTagInput.trim();
+                    if (t && !this.editForm.tags.includes(t)) {
+                        this.editForm.tags.push(t);
+                    }
+                    this.newTagInput = '';
+                },
                 async saveTask() {
                     if (!this.editForm.content) { alert('内容を入力してください'); return; }
-                    const payload = { ...this.editForm, tags: this.editForm.tagsStr.split(',').map(s => s.trim()).filter(s => s) };
+                    // tagsはそのまま配列として送信
+                    const payload = { ...this.editForm };
                     if (this.isCreating) {
                         if (this.myUserId) payload.userId = this.myUserId;
                         else { const u = this.tasks.find(t => t.userName === payload.userName); if (u) payload.userId = u.userId; }
@@ -391,7 +472,6 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            // ★ここを修正しました（サーバー側のプロパティ名に合わせる）
                             targetUser: this.reportForm.targetUser,
                             targetGuild: this.reportForm.guildName,
                             targetChannel: this.reportForm.channelName,
