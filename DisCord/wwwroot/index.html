@@ -162,12 +162,12 @@
         <div v-if="loading" style="text-align:center">Loading...</div>
 
         <div v-else class="kanban-board">
-            <div class="column col-todo" @dragover.prevent @drop="onDrop($event, 'active')">
+            <div class="column col-todo" @dragover="onDragOver" @drop="onDrop($event, 'active')">
                 <div class="column-header">
                     <span>🚀 進行中 <span class="count">{{ tasksActive.length }}</span></span>
                     <button class="btn-export" @click="exportList('active')" title="このリストのみコピー">📄</button>
                 </div>
-                <div class="task-container" @dragover.prevent @drop.stop="onDrop($event, 'active')">
+                <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'active')">
                     <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
@@ -191,12 +191,12 @@
                 </div>
             </div>
 
-            <div class="column col-done" @dragover.prevent @drop="onDrop($event, 'done')">
+            <div class="column col-done" @dragover="onDragOver" @drop="onDrop($event, 'done')">
                 <div class="column-header">
                     <span>✅ 完了 <span class="count">{{ tasksDone.length }}</span></span>
                     <button class="btn-export" @click="exportList('done')" title="このリストのみコピー">📄</button>
                 </div>
-                <div class="task-container" @dragover.prevent @drop.stop="onDrop($event, 'done')">
+                <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'done')">
                     <div v-for="task in tasksDone" :key="task.id" class="card done-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
@@ -219,7 +219,7 @@
                 </div>
             </div>
 
-            <div class="column col-archive" @dragover.prevent @drop="onDrop($event, 'archive')">
+            <div class="column col-archive" @dragover="onDragOver" @drop="onDrop($event, 'archive')">
                 <div class="column-header">
                     <div>
                         🗑️ アーカイブ <span class="count">{{ tasksArchive.length }}</span>
@@ -231,7 +231,7 @@
                         {{ filterUsers.length > 0 ? '🗑️表示分削除' : '🗑️全削除' }}
                     </button>
                 </div>
-                <div class="task-container" @dragover.prevent @drop.stop="onDrop($event, 'archive')">
+                <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'archive')">
                     <div v-for="task in tasksArchive" :key="task.id" class="card archive-card"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
@@ -495,6 +495,11 @@
                 setInterval(this.fetchTasks, 3000);
             },
             methods: {
+                // ★追加: ドラッグ中のカーソルを常に許可状態にする
+                onDragOver(evt) {
+                    evt.preventDefault();
+                    evt.dataTransfer.dropEffect = 'move';
+                },
                 async fetchTasks() {
                     if (this.editForm || this.showBatchModal || this.showReportModal || this.showConfigModal) return;
                     try {
