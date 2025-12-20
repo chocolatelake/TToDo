@@ -2,10 +2,8 @@
 using Discord.WebSocket;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace TToDo
@@ -30,9 +28,7 @@ namespace TToDo
             _client = new DiscordSocketClient(config);
             _client.Log += msg => { Console.WriteLine($"[Bot] {msg}"); return Task.CompletedTask; };
             _client.MessageReceived += MessageReceivedAsync;
-            _client.ButtonExecuted += ButtonHandler;
             _client.SelectMenuExecuted += SelectMenuHandler;
-            _client.ModalSubmitted += ModalHandler;
         }
 
         public ulong? ResolveChannelId(string guildName, string channelName)
@@ -55,92 +51,6 @@ namespace TToDo
             return "";
         }
 
-        public async Task<bool> SendManualReport(ReportRequest req)
-        {
-            var targetChannelId = ResolveChannelId(req.TargetGuild, req.TargetChannel);
-            if (targetChannelId == null) return false;
-
-            var channel = _client.GetChannel(targetChannelId.Value) as ISocketMessageChannel;
-            if (channel == null) return false;
-
-            // ★修正: 期間判定ロジック
-            var now = Globals.GetJstNow();
-            var today = now.Date;
-
-            DateTime rangeStart;
-            DateTime rangeEnd;
-            string dateLabel;
-            string periodName;
-
-            if (req.TargetRange == "yesterday")
-            {
-                // 昨日 00:00 <= t < 今日 00:00
-                rangeStart = today.AddDays(-1);
-                rangeEnd = today;
-                dateLabel = $"{rangeStart:yyyy/MM/dd} (昨日)";
-                periodName = "昨日";
-            }
-            else
-            {
-                // 今日 00:00 <= t < 明日 00:00
-                rangeStart = today;
-                rangeEnd = today.AddDays(1);
-                dateLabel = $"{rangeStart:yyyy/MM/dd}";
-                periodName = "本日";
-            }
-
-            List<TaskItem> completedTasks;
-
-            lock (Globals.Lock)
-            {
-                completedTasks = Globals.AllTasks
-                    .Where(t =>
-                        (t.Assignee == req.TargetUser || (string.IsNullOrEmpty(t.Assignee) && t.UserName == req.TargetUser))
-                        && t.CompletedAt != null
-                        && t.CompletedAt >= rangeStart
-                        && t.CompletedAt < rangeEnd
-                        && (string.IsNullOrEmpty(req.SourceGuild) || t.GuildName == req.SourceGuild)
-                        && (string.IsNullOrEmpty(req.SourceChannel) || t.ChannelName == req.SourceChannel)
-                    )
-                    .OrderBy(t => t.CompletedAt)
-                    .ToList();
-            }
-
-            string sourceInfo = "";
-            if (!string.IsNullOrEmpty(req.SourceGuild))
-            {
-                sourceInfo += $" ({req.SourceGuild}";
-                if (!string.IsNullOrEmpty(req.SourceChannel)) sourceInfo += $" / {req.SourceChannel}";
-                sourceInfo += ")";
-            }
-
-            if (completedTasks.Count == 0)
-            {
-                await channel.SendMessageAsync($"📭 **Daily Report: {req.TargetUser}**{sourceInfo}\n{dateLabel} の完了タスクはありません。");
-                return true;
-            }
-
-            var sb = new StringBuilder();
-            sb.AppendLine($"📊 **Daily Report: {req.TargetUser}**{sourceInfo}");
-            sb.AppendLine($"📅 {dateLabel}");
-            sb.AppendLine($"{periodName} **{completedTasks.Count}件** のタスクを完了しました！");
-            sb.AppendLine("```");
-            foreach (var t in completedTasks)
-            {
-                string location = "";
-                if (string.IsNullOrEmpty(req.SourceGuild) && !string.IsNullOrEmpty(t.GuildName))
-                {
-                    location = $" [{t.GuildName}]";
-                }
-
-                sb.AppendLine($"・[{t.CompletedAt?.ToString("HH:mm")}{location}] {t.Content}");
-            }
-            sb.AppendLine("```");
-
-            await channel.SendMessageAsync(sb.ToString());
-            return true;
-        }
-
         public async Task StartAsync()
         {
             await _client.LoginAsync(TokenType.Bot, Globals.BotToken);
@@ -148,6 +58,7 @@ namespace TToDo
             _ = Task.Run(() => AutoReportLoop());
         }
 
+        // --- コマンド処理 ---
         private async Task MessageReceivedAsync(SocketMessage message)
         {
             if (message.Author.IsBot || string.IsNullOrWhiteSpace(message.Content)) return;
@@ -158,29 +69,71 @@ namespace TToDo
             var parts = content.Split(new[] { ' ', '　', '\t', '\n' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length > 1) arg1 = parts[1].Trim();
 
-            if (arg1.StartsWith("web team", StringComparison.OrdinalIgnoreCase))
+            // 1. ヘルプ
+            if (arg1.StartsWith("help", StringComparison.OrdinalIgnoreCase))
             {
-                string url = $"{Globals.WebUrl}/?mode=team";
-                await message.Channel.SendMessageAsync($"🌍 **チーム全体ボード:**\n全員のタスクが見れるURLです:\n{url}");
-                return;
-            }
-            else if (arg1.StartsWith("web", StringComparison.OrdinalIgnoreCase))
-            {
-                string url = $"{Globals.WebUrl}/?uid={message.Author.Id}";
-                await message.Channel.SendMessageAsync($"👤 **自分専用ボード:**\n自分のタスクだけが見れるURLです:\n{url}");
+                await ShowHelp(message.Channel);
                 return;
             }
 
-            if (arg1.StartsWith("list", StringComparison.OrdinalIgnoreCase)) await ShowCompactList(message.Channel, message.Author, arg1);
-            else if (arg1.StartsWith("report", StringComparison.OrdinalIgnoreCase) || arg1.StartsWith("today", StringComparison.OrdinalIgnoreCase)) await ShowReport(message.Channel, message.Author, arg1);
-            else if (arg1.StartsWith("close", StringComparison.OrdinalIgnoreCase)) await RunDailyClose(message.Author.Id, message.Channel);
-            else if (arg1.StartsWith("trash", StringComparison.OrdinalIgnoreCase)) await ShowTrashList(message.Channel, message.Author);
-            else if (arg1.StartsWith("config")) await HandleConfig(message.Channel, message.Author, arg1);
-            else if (arg1.StartsWith("export", StringComparison.OrdinalIgnoreCase)) await ExportData(message.Channel, message.Author);
-            else if (arg1.StartsWith("import")) await ImportData(message.Channel, content.Substring(content.IndexOf("import") + 6).Trim());
-            else if (!string.IsNullOrWhiteSpace(arg1)) await AddNewTasks(message.Channel, message.Author, arg1);
+            // 2. Webページ
+            if (arg1.StartsWith("web", StringComparison.OrdinalIgnoreCase))
+            {
+                await message.Channel.SendMessageAsync($"🌍 **TToDo Board:**\n{Globals.WebUrl}");
+                return;
+            }
+
+            // 3. 日報 (report today / report yesterday のみ)
+            // ★変更: "report" 単体や "today" 単体を排除
+            if (arg1.Equals("report today", StringComparison.OrdinalIgnoreCase) ||
+                arg1.Equals("report yesterday", StringComparison.OrdinalIgnoreCase))
+            {
+                await ShowReport(message.Channel, message.Author, arg1);
+                return;
+            }
+
+            // 4. タスク一覧
+            if (arg1.StartsWith("list", StringComparison.OrdinalIgnoreCase))
+            {
+                await ShowCompactList(message.Channel, message.Author);
+                return;
+            }
+
+            // 5. タスク追加 (それ以外の場合)
+            // ※ "report" とだけ打った場合もタスクとして登録されてしまうのを防ぐならここに追加条件が必要ですが、
+            // 今回は「コマンドに合致しないものはタスク」というルール通りにします。
+            if (!string.IsNullOrWhiteSpace(arg1))
+            {
+                await AddNewTasks(message.Channel, message.Author, arg1);
+            }
         }
 
+        // --- 機能実装: ヘルプ ---
+        private async Task ShowHelp(ISocketMessageChannel c)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("📖 **TToDo Help**");
+            sb.AppendLine($"Web Board: {Globals.WebUrl}");
+            sb.AppendLine("");
+            sb.AppendLine("`!ttodo report today`"); // ★変更
+            sb.AppendLine("今日の完了タスク(日報)を表示します。");
+            sb.AppendLine("");
+            sb.AppendLine("`!ttodo report yesterday`");
+            sb.AppendLine("昨日の完了タスク(日報)を表示します。");
+            sb.AppendLine("");
+            sb.AppendLine("`!ttodo list`");
+            sb.AppendLine("自分の未完了タスク一覧を表示します。");
+            sb.AppendLine("");
+            sb.AppendLine("`!ttodo web`");
+            sb.AppendLine("Web管理画面のURLを表示します。");
+            sb.AppendLine("");
+            sb.AppendLine("`!ttodo [タスク内容]`");
+            sb.AppendLine("タスクを追加します。複数行、`!!`重要、`#タグ` も可能です。");
+
+            await c.SendMessageAsync(sb.ToString());
+        }
+
+        // --- 機能実装: タスク追加 ---
         private async Task AddNewTasks(ISocketMessageChannel channel, SocketUser user, string rawText)
         {
             string avatar = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl();
@@ -201,6 +154,7 @@ namespace TToDo
                     if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); pendingTask = null; }
                     currentTags.Clear(); continue;
                 }
+
                 bool isTagLine = false;
                 foreach (var tp in TagPrefixes)
                 {
@@ -217,17 +171,19 @@ namespace TToDo
                 bool isContinuation = false;
                 foreach (var p in DefaultPrefixes) { if (line.StartsWith(p)) { isContinuation = true; break; } }
 
-                if (isContinuation && pendingTask != null) pendingTask.Content += "\n" + trimLine;
+                if (isContinuation && pendingTask != null)
+                {
+                    pendingTask.Content += "\n" + trimLine;
+                }
                 else
                 {
                     if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
+
                     int prio = -1; int diff = -1; string content = trimLine;
                     if (content.StartsWith("!!") || content.StartsWith("！！")) { prio = 1; diff = 1; content = content.Substring(2); }
-                    else if (content.StartsWith("??") || content.StartsWith("？？")) { prio = 0; diff = 0; content = content.Substring(2); }
-                    else if (content.StartsWith("!") || content.StartsWith("！")) { prio = 1; diff = 0; content = content.Substring(1); }
-                    else if (content.StartsWith("?") || content.StartsWith("？")) { prio = 0; diff = 1; content = content.Substring(1); }
-                    content = content.Trim();
+                    else if (content.StartsWith("!")) { prio = 1; diff = 0; content = content.Substring(1); }
 
+                    content = content.Trim();
                     if (!string.IsNullOrWhiteSpace(content))
                     {
                         pendingTask = new TaskItem
@@ -249,30 +205,226 @@ namespace TToDo
             }
             if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
             Globals.SaveData();
-            if (addedTasks.Count > 0) await ShowCompactList(channel, user, "");
+            if (addedTasks.Count > 0) await ShowCompactList(channel, user);
         }
 
-        private async Task ShowCompactList(ISocketMessageChannel channel, SocketUser user, string args) { var today = Globals.GetJstNow().Date; IEnumerable<TaskItem> query; lock (Globals.Lock) query = Globals.AllTasks.Where(t => !t.IsForgotten && (t.CompletedAt == null || t.CompletedAt >= today)).ToList(); bool isMine = args.Contains("mine"); bool isChannel = args.Contains("channel"); if (isMine) query = query.Where(t => t.UserId == user.Id); else if (isChannel) query = query.Where(t => t.ChannelId == channel.Id); else query = query.Where(t => t.UserId == user.Id && t.ChannelId == channel.Id); var visibleTasks = query.ToList(); if (visibleTasks.Count == 0) { await channel.SendMessageAsync("🎉 タスクはありません！"); return; } var sb = new StringBuilder(); sb.AppendLine($"📂 **タスク一覧 ({visibleTasks.Count}件):**"); var grouped = visibleTasks.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "📂 未分類").OrderBy(g => g.Key); foreach (var group in grouped) { sb.AppendLine($"\n**{group.Key}**"); foreach (var task in group.OrderByDescending(t => GetSortScore(t))) { string label = GetPriorityLabel(task.Priority, task.Difficulty); string state = task.CompletedAt != null ? "✅ " : (task.IsSnoozed ? "💤 " : ""); string display = task.Content.Split('\n')[0]; if (display.Length > 20) display = display.Substring(0, 20) + "..."; sb.AppendLine($"`[{label}]` {state}{display}"); } } var menuBuilder = new SelectMenuBuilder().WithCustomId("main_task_selector").WithPlaceholder("▼ 操作...").WithMinValues(1).WithMaxValues(1); foreach (var task in visibleTasks.Take(25)) { string label = GetPriorityLabel(task.Priority, task.Difficulty); string contentLabel = task.Content.Replace("\n", " "); if (contentLabel.Length > 45) contentLabel = contentLabel.Substring(0, 42) + "..."; if (task.CompletedAt != null) contentLabel = "✅ " + contentLabel; else if (task.IsSnoozed) contentLabel = "💤 " + contentLabel; menuBuilder.AddOption($"[{label}] {contentLabel}", task.Id, task.Tags.Count > 0 ? $"[{task.Tags[0]}]" : "未分類"); } var builder = new ComponentBuilder().WithSelectMenu(menuBuilder).WithButton("優先度", "start_sort_p", ButtonStyle.Secondary, null, row: 1).WithButton("タグ", "start_sort_t", ButtonStyle.Secondary, null, row: 1); await channel.SendMessageAsync(sb.ToString(), components: builder.Build()); }
-        private async Task ShowTrashList(ISocketMessageChannel c, SocketUser u) { List<TaskItem> l; lock (Globals.Lock) l = Globals.AllTasks.Where(t => t.UserId == u.Id && t.IsForgotten).ToList(); if (l.Count == 0) { await c.SendMessageAsync("🗑️ ゴミ箱は空です。"); return; } var menu = new SelectMenuBuilder().WithCustomId("trash_task_selector").WithPlaceholder("▼ 操作...").WithMinValues(1).WithMaxValues(1); foreach (var t in l.Take(25)) menu.AddOption(t.Content.Length > 50 ? t.Content.Substring(0, 47) + "..." : t.Content, t.Id, "忘却中"); await c.SendMessageAsync($"🗑️ **ゴミ箱 ({l.Count}件)**", components: new ComponentBuilder().WithSelectMenu(menu).Build()); }
-        private async Task SelectMenuHandler(SocketMessageComponent component) { try { string id = component.Data.CustomId; string val = component.Data.Values.First(); TaskItem? task; lock (Globals.Lock) task = Globals.AllTasks.FirstOrDefault(t => t.Id == val); if (id == "main_task_selector") { if (task == null) { await component.RespondAsync("エラー: なし", ephemeral: true); return; } string l = GetPriorityLabel(task.Priority, task.Difficulty); string status = task.CompletedAt != null ? "(完了済)" : ""; string txt = $"🛠️ **操作:** {status}\n[{l}] **{task.Content}**"; var b = new ComponentBuilder().WithButton(null, $"done_{task.Id}", ButtonStyle.Secondary, new Emoji("✅")).WithButton(null, $"snooze_{task.Id}", ButtonStyle.Secondary, new Emoji("💤")).WithButton(null, $"forget_{task.Id}", ButtonStyle.Secondary, new Emoji("🗑️")).WithButton(null, $"edit_{task.Id}", ButtonStyle.Secondary, new Emoji("⚙️")); await component.RespondAsync(txt, components: b.Build(), ephemeral: true); } else if (id == "trash_task_selector") { if (task == null) { await component.RespondAsync("エラー: なし", ephemeral: true); return; } string txt = $"🗑️ **ゴミ箱:** {task.Content}"; var b = new ComponentBuilder().WithButton("↩️ 復活", $"recall_{task.Id}", ButtonStyle.Primary).WithButton("💥 抹消", $"obliterate_{task.Id}", ButtonStyle.Danger); await component.RespondAsync(txt, components: b.Build(), ephemeral: true); } else if (id.StartsWith("tag_sel_")) { var parts = id.Substring(8).Split('_'); var t = Globals.AllTasks.FirstOrDefault(x => x.Id == parts[0]); if (t != null) { lock (Globals.Lock) { t.Tags.Clear(); if (!string.IsNullOrEmpty(val)) t.Tags.Add(val); Globals.SaveData(); } if (parts.Length > 1 && parts[1] != "normal") { var next = FindNextSortTarget(component.User.Id, parts[1]); if (next != null) await ShowSortCard(component, next, parts[1], false); else await component.RespondAsync("🎉 完了", ephemeral: true); } else await component.RespondAsync($"✅ タグ: [{val}]", ephemeral: true); } } } catch { } }
-        private async Task ButtonHandler(SocketMessageComponent component) { try { string id = component.Data.CustomId; if (id == "start_sort_p") { await StartSortingSession(component, "p"); return; } if (id == "start_sort_t") { await StartSortingSession(component, "t"); return; } if (id.StartsWith("set_")) { await HandleAttributeSet(component); return; } if (id.StartsWith("tag_edit_")) { await ShowTagSelector(component); return; } if (id.StartsWith("tag_create_")) { await ShowTagModal(component); return; } string tid = id.Substring(id.IndexOf('_') + 1); TaskItem? task; lock (Globals.Lock) task = Globals.AllTasks.FirstOrDefault(x => x.Id == tid); if (task == null) { await component.RespondAsync("⚠️ なし", ephemeral: true); return; } if (id.StartsWith("done_")) { lock (Globals.Lock) { task.CompletedAt = Globals.GetJstNow(); task.IsSnoozed = false; Globals.SaveData(); } await component.UpdateAsync(x => { x.Content = $"✅ ~~{task.Content}~~ (完了)"; x.Components = null; }); } else if (id.StartsWith("snooze_")) { lock (Globals.Lock) { task.IsSnoozed = !task.IsSnoozed; Globals.SaveData(); } await component.UpdateAsync(x => { x.Content = $"💤 ~~{task.Content}~~"; x.Components = null; }); } else if (id.StartsWith("forget_")) { lock (Globals.Lock) { task.IsForgotten = true; task.IsSnoozed = false; Globals.SaveData(); } await component.UpdateAsync(x => { x.Content = $"🗑️ ~~{task.Content}~~"; x.Components = null; }); } else if (id.StartsWith("recall_")) { lock (Globals.Lock) { task.IsForgotten = false; Globals.SaveData(); } await component.UpdateAsync(x => { x.Content = $"↩️ 復活: {task.Content}"; x.Components = null; }); } else if (id.StartsWith("obliterate_")) { lock (Globals.Lock) { Globals.AllTasks.Remove(task); Globals.SaveData(); } await component.UpdateAsync(x => { x.Content = $"💥 抹消: {task.Content}"; x.Components = null; }); } else if (id.StartsWith("edit_")) { await ShowEditPanel(component, task); } } catch { } }
-        private async Task ModalHandler(SocketModal m) { try { if (!m.Data.CustomId.StartsWith("modal_tag_")) return; string rid = m.Data.CustomId.Substring(10); var ps = rid.Split('_'); TaskItem? t; lock (Globals.Lock) t = Globals.AllTasks.FirstOrDefault(x => x.Id == ps[0]); if (t != null) { string v = m.Data.Components.First().Value.Trim(); lock (Globals.Lock) { t.Tags.Clear(); if (v != "") t.Tags.Add(v); Globals.SaveData(); } } string mode = ps.Length > 1 ? ps[1] : "normal"; if (mode == "normal") await m.RespondAsync($"✅ 更新: {t?.Content}", ephemeral: true); else { var next = FindNextSortTarget(m.User.Id, mode); if (next != null) await ShowSortCard(m, next, mode, false); else await m.RespondAsync("🎉 完了", ephemeral: true); } } catch { } }
-        private int GetSortScore(TaskItem t) { if (t.CompletedAt != null) return -10; if (t.IsSnoozed) return -1; if (t.Priority == 1 && t.Difficulty == 1) return 10; if (t.Priority == 1) return 9; if (t.Priority == -1) return 5; if (t.Priority == 0 && t.Difficulty == 1) return 2; return 1; }
-        private string GetPriorityLabel(int p, int d) { if (p == 1 && d == 1) return "1"; if (p == 1 && d == 0) return "2"; if (p == 0 && d == 1) return "3"; if (p == 0 && d == 0) return "4"; return "-"; }
-        private TaskItem? FindNextSortTarget(ulong u, string m) { lock (Globals.Lock) return Globals.AllTasks.FirstOrDefault(t => t.UserId == u && !t.IsForgotten && t.CompletedAt == null && (m == "p" ? t.Priority == -1 : t.Tags.Count == 0)); }
-        private async Task ShowEditPanel(SocketMessageComponent c, TaskItem t) { var b = new ComponentBuilder().WithButton("1", $"set_1_1_{t.Id}_n", ButtonStyle.Secondary).WithButton("2", $"set_1_0_{t.Id}_n", ButtonStyle.Secondary).WithButton("3", $"set_0_1_{t.Id}_n", ButtonStyle.Secondary).WithButton("4", $"set_0_0_{t.Id}_n", ButtonStyle.Secondary).WithButton(null, $"tag_edit_{t.Id}_n", ButtonStyle.Secondary, new Emoji("🏷️")); await c.RespondAsync($"🔧 **編集:** {t.Content}", components: b.Build(), ephemeral: true); }
-        private async Task StartSortingSession(SocketMessageComponent c, string m) { var t = FindNextSortTarget(c.User.Id, m); if (t == null) { await c.RespondAsync("🎉 完了", ephemeral: true); return; } await ShowSortCard(c, t, m, false); }
-        private async Task ShowSortCard(SocketInteraction i, TaskItem t, string m, bool up) { string txt = $"**仕分け:** {t.Content}"; var b = new ComponentBuilder().WithButton("1", $"set_1_1_{t.Id}_{m}", ButtonStyle.Secondary).WithButton("2", $"set_1_0_{t.Id}_{m}", ButtonStyle.Secondary).WithButton("3", $"set_0_1_{t.Id}_{m}", ButtonStyle.Secondary).WithButton("4", $"set_0_0_{t.Id}_{m}", ButtonStyle.Secondary).WithButton(null, $"tag_edit_{t.Id}_{m}", ButtonStyle.Secondary, new Emoji("🏷️")); if (up && i is SocketMessageComponent c) await c.UpdateAsync(x => { x.Content = txt; x.Components = b.Build(); }); else await i.RespondAsync(txt, components: b.Build(), ephemeral: true); }
-        private async Task HandleAttributeSet(SocketMessageComponent c) { var p = c.Data.CustomId.Split('_'); TaskItem? t; lock (Globals.Lock) t = Globals.AllTasks.FirstOrDefault(x => x.Id == p[3]); if (t != null) { lock (Globals.Lock) { t.Priority = int.Parse(p[1]); t.Difficulty = int.Parse(p[2]); Globals.SaveData(); } } var next = FindNextSortTarget(c.User.Id, p.Length > 4 ? p[4] : "p"); if (next != null) await ShowSortCard(c, next, p[4], true); else await c.UpdateAsync(x => { x.Content = "🎉 完了"; x.Components = null; }); }
-        private async Task ShowTagSelector(SocketMessageComponent c) { string rid = c.Data.CustomId.Substring(9); var ps = rid.Split('_'); TaskItem? t; lock (Globals.Lock) t = Globals.AllTasks.FirstOrDefault(x => x.Id == ps[0]); if (t == null) return; List<string> tags; lock (Globals.Lock) tags = Globals.AllTasks.Where(x => x.UserId == c.User.Id).SelectMany(x => x.Tags).Distinct().Take(25).ToList(); if (tags.Count == 0) { await ShowTagModal(c); return; } var menu = new SelectMenuBuilder().WithCustomId($"tag_sel_{ps[0]}_{ps[1]}").WithPlaceholder("タグ選択"); foreach (var tag in tags) menu.AddOption(tag, tag); var b = new ComponentBuilder().WithSelectMenu(menu).WithButton(null, $"tag_create_{ps[0]}_{ps[1]}", ButtonStyle.Primary, new Emoji("➕")); await c.RespondAsync($"🏷️ {t.Content}", components: b.Build(), ephemeral: true); }
-        private async Task ShowTagModal(SocketMessageComponent c) { string rid = c.Data.CustomId.Substring(11); await c.RespondWithModalAsync(new ModalBuilder().WithTitle("新規タグ").WithCustomId($"modal_tag_{rid}").AddTextInput("タグ名", "n", value: "", required: true).Build()); }
-        private async Task ShowReport(ISocketMessageChannel c, SocketUser u, string a) { var d = Globals.GetJstNow().Date; string p = "Today"; if (a.Contains("yesterday")) { d = d.AddDays(-1); p = "Yesterday"; } else if (a.Contains("week")) { d = d.AddDays(-7); p = "Last Week"; } List<TaskItem> l; lock (Globals.Lock) l = Globals.AllTasks.Where(x => x.UserId == u.Id && x.CompletedAt >= d).OrderBy(x => x.CompletedAt).ToList(); if (l.Count == 0) { await c.SendMessageAsync($"📭 {p}の完了タスクなし"); return; } var sb = new StringBuilder(); sb.AppendLine($"📊 **Task Report: {u.Username}** ({p})"); sb.AppendLine($"**{l.Count}件** 完了！"); sb.AppendLine("```text"); foreach (var t in l) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}"); sb.AppendLine("```"); await c.SendMessageAsync(sb.ToString()); }
-        private async Task HandleConfig(ISocketMessageChannel c, SocketUser u, string a) { if (a.Contains("time")) { var ps = a.Split(' '); if (ps.Length < 3) return; lock (Globals.Lock) { var conf = Globals.Configs.FirstOrDefault(x => x.UserId == u.Id); if (conf == null) { conf = new UserConfig { UserId = u.Id }; Globals.Configs.Add(conf); } conf.ReportTime = ps[2]; Globals.SaveData(); } await c.SendMessageAsync($"⏰ 日報: {ps[2]}"); } }
-        private async Task ExportData(ISocketMessageChannel c, SocketUser u) { string j; lock (Globals.Lock) j = JsonSerializer.Serialize(Globals.AllTasks.Where(x => x.UserId == u.Id), new JsonSerializerOptions { WriteIndented = true }); if (j.Length > 1900) { File.WriteAllText("e.json", j); await c.SendFileAsync("e.json"); } else await c.SendMessageAsync($"```json\n{j}\n```"); }
-        private async Task ImportData(ISocketMessageChannel c, string j) { try { var l = JsonSerializer.Deserialize<List<TaskItem>>(j); if (l != null) { lock (Globals.Lock) { foreach (var i in l) { Globals.AllTasks.RemoveAll(x => x.Id == i.Id); Globals.AllTasks.Add(i); } Globals.SaveData(); } await c.SendMessageAsync($"📥 {l.Count}件"); } } catch { } }
+        // --- 機能実装: リスト表示 ---
+        private (string Text, MessageComponent? Components) BuildListView(ulong userId, ulong channelId)
+        {
+            var today = Globals.GetJstNow().Date;
+            List<TaskItem> visibleTasks;
+            lock (Globals.Lock)
+            {
+                visibleTasks = Globals.AllTasks
+                    .Where(t => t.UserId == userId && t.ChannelId == channelId && !t.IsForgotten && (t.CompletedAt == null || t.CompletedAt >= today))
+                    .OrderByDescending(t => GetSortScore(t))
+                    .ToList();
+            }
 
-        // 自動日報は「Assignee名」でターゲットを探す
-        private async Task RunDailyClose(ulong userId, ISocketMessageChannel feedbackChannel = null)
+            if (visibleTasks.Count == 0) return ("🎉 タスクはありません！", null);
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"📂 **タスク一覧 ({visibleTasks.Count}件):**");
+
+            var grouped = visibleTasks.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "📂 未分類").OrderBy(g => g.Key);
+            foreach (var group in grouped)
+            {
+                sb.AppendLine($"\n**{group.Key}**");
+                foreach (var task in group)
+                {
+                    string label = GetPriorityLabel(task.Priority);
+                    string state = task.CompletedAt != null ? "✅ " : "";
+                    string display = task.Content.Split('\n')[0];
+                    if (display.Length > 25) display = display.Substring(0, 25) + "...";
+                    sb.AppendLine($"`[{label}]` {state}{display}");
+                }
+            }
+
+            var doneMenu = new SelectMenuBuilder().WithCustomId("menu_quick_done").WithPlaceholder("✅ 完了にする...").WithMinValues(1).WithMaxValues(1);
+            var archiveMenu = new SelectMenuBuilder().WithCustomId("menu_quick_archive").WithPlaceholder("🗑️ アーカイブする...").WithMinValues(1).WithMaxValues(1);
+
+            int count = 0;
+            foreach (var task in visibleTasks)
+            {
+                if (count >= 25) break;
+                string label = GetPriorityLabel(task.Priority);
+                string contentLabel = task.Content.Replace("\n", " ");
+                if (contentLabel.Length > 45) contentLabel = contentLabel.Substring(0, 42) + "...";
+
+                var option = new SelectMenuOptionBuilder()
+                    .WithLabel($"[{label}] {contentLabel}")
+                    .WithValue(task.Id)
+                    .WithDescription(task.Tags.Count > 0 ? task.Tags[0] : "未分類");
+
+                doneMenu.AddOption(option);
+                archiveMenu.AddOption(option);
+                count++;
+            }
+
+            var components = new ComponentBuilder()
+                .WithSelectMenu(doneMenu, row: 0)
+                .WithSelectMenu(archiveMenu, row: 1)
+                .Build();
+
+            return (sb.ToString(), components);
+        }
+
+        private async Task ShowCompactList(ISocketMessageChannel channel, SocketUser user)
+        {
+            var view = BuildListView(user.Id, channel.Id);
+            if (view.Components == null) await channel.SendMessageAsync(view.Text);
+            else await channel.SendMessageAsync(view.Text, components: view.Components);
+        }
+
+        private async Task SelectMenuHandler(SocketMessageComponent component)
+        {
+            try
+            {
+                string id = component.Data.CustomId;
+                string val = component.Data.Values.First();
+
+                if (id == "menu_quick_done")
+                {
+                    lock (Globals.Lock)
+                    {
+                        var t = Globals.AllTasks.FirstOrDefault(x => x.Id == val);
+                        if (t != null)
+                        {
+                            t.CompletedAt = Globals.GetJstNow();
+                            t.IsSnoozed = false;
+                            Globals.SaveData();
+                        }
+                    }
+                    var view = BuildListView(component.User.Id, component.Channel.Id);
+                    await component.UpdateAsync(x => { x.Content = view.Text; x.Components = view.Components; });
+                }
+                else if (id == "menu_quick_archive")
+                {
+                    lock (Globals.Lock)
+                    {
+                        var t = Globals.AllTasks.FirstOrDefault(x => x.Id == val);
+                        if (t != null)
+                        {
+                            t.IsForgotten = true;
+                            Globals.SaveData();
+                        }
+                    }
+                    var view = BuildListView(component.User.Id, component.Channel.Id);
+                    await component.UpdateAsync(x => { x.Content = view.Text; x.Components = view.Components; });
+                }
+            }
+            catch { }
+        }
+
+        // --- 機能実装: 日報表示 ---
+        private async Task ShowReport(ISocketMessageChannel c, SocketUser u, string args)
+        {
+            var now = Globals.GetJstNow();
+            var today = now.Date;
+            DateTime start, end;
+            string label;
+
+            if (args.Contains("yesterday"))
+            {
+                start = today.AddDays(-1);
+                end = today;
+                label = "Yesterday";
+            }
+            else
+            {
+                start = today;
+                end = today.AddDays(1);
+                label = "Today";
+            }
+
+            List<TaskItem> l;
+            lock (Globals.Lock)
+            {
+                l = Globals.AllTasks
+                    .Where(x => x.UserId == u.Id && x.CompletedAt != null && x.CompletedAt >= start && x.CompletedAt < end)
+                    .OrderBy(x => x.CompletedAt)
+                    .ToList();
+            }
+
+            if (l.Count == 0) { await c.SendMessageAsync($"📭 {label}の完了タスクはありません。"); return; }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"📊 **Task Report: {u.Username}** ({label})");
+            sb.AppendLine($"**{l.Count}件** 完了！");
+            sb.AppendLine("```text");
+            foreach (var t in l) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}");
+            sb.AppendLine("```");
+            await c.SendMessageAsync(sb.ToString());
+        }
+
+        // --- 機能実装: 自動日報 & 手動日報送信 ---
+        public async Task<bool> SendManualReport(ReportRequest req)
+        {
+            var targetChannelId = ResolveChannelId(req.TargetGuild, req.TargetChannel);
+            if (targetChannelId == null) return false;
+
+            var channel = _client.GetChannel(targetChannelId.Value) as ISocketMessageChannel;
+            if (channel == null) return false;
+
+            var now = Globals.GetJstNow();
+            var today = now.Date;
+            DateTime rangeStart, rangeEnd;
+            string dateLabel, periodName;
+
+            if (req.TargetRange == "yesterday")
+            {
+                rangeStart = today.AddDays(-1);
+                rangeEnd = today;
+                dateLabel = $"{rangeStart:yyyy/MM/dd} (昨日)";
+                periodName = "昨日";
+            }
+            else
+            {
+                rangeStart = today;
+                rangeEnd = today.AddDays(1);
+                dateLabel = $"{rangeStart:yyyy/MM/dd}";
+                periodName = "本日";
+            }
+
+            List<TaskItem> completedTasks;
+            lock (Globals.Lock)
+            {
+                completedTasks = Globals.AllTasks
+                    .Where(t =>
+                        (t.Assignee == req.TargetUser || (string.IsNullOrEmpty(t.Assignee) && t.UserName == req.TargetUser))
+                        && t.CompletedAt != null && t.CompletedAt >= rangeStart && t.CompletedAt < rangeEnd
+                        && (string.IsNullOrEmpty(req.SourceGuild) || t.GuildName == req.SourceGuild)
+                        && (string.IsNullOrEmpty(req.SourceChannel) || t.ChannelName == req.SourceChannel)
+                    )
+                    .OrderBy(t => t.CompletedAt)
+                    .ToList();
+            }
+
+            string sourceInfo = "";
+            if (!string.IsNullOrEmpty(req.SourceGuild)) sourceInfo += $" ({req.SourceGuild}" + (!string.IsNullOrEmpty(req.SourceChannel) ? $" / {req.SourceChannel})" : ")");
+
+            if (completedTasks.Count == 0)
+            {
+                await channel.SendMessageAsync($"📭 **Daily Report: {req.TargetUser}**{sourceInfo}\n{dateLabel} の完了タスクはありません。");
+                return true;
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"📊 **Daily Report: {req.TargetUser}**{sourceInfo}");
+            sb.AppendLine($"📅 {dateLabel}");
+            sb.AppendLine($"{periodName} **{completedTasks.Count}件** のタスクを完了しました！");
+            sb.AppendLine("```");
+            foreach (var t in completedTasks)
+            {
+                string loc = (string.IsNullOrEmpty(req.SourceGuild) && !string.IsNullOrEmpty(t.GuildName)) ? $" [{t.GuildName}]" : "";
+                sb.AppendLine($"・[{t.CompletedAt?.ToString("HH:mm")}{loc}] {t.Content}");
+            }
+            sb.AppendLine("```");
+            await channel.SendMessageAsync(sb.ToString());
+            return true;
+        }
+
+        private async Task RunDailyClose(ulong userId)
         {
             var now = Globals.GetJstNow();
             var deleteThreshold = now.Date.AddDays(-1);
@@ -281,26 +433,18 @@ namespace TToDo
             UserConfig? config;
             lock (Globals.Lock) { config = Globals.Configs.FirstOrDefault(x => x.UserId == userId); }
 
-            // 設定あり -> 手動レポートと同じロジックで送信（期間は「本日」固定）
             if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
             {
-                var reportReq = new ReportRequest
-                {
-                    TargetUser = config.UserName,
-                    TargetGuild = config.TargetGuild,
-                    TargetChannel = config.TargetChannel,
-                    TargetRange = "today" // 自動送信は基本的に「今日」の分
-                };
+                var reportReq = new ReportRequest { TargetUser = config.UserName, TargetGuild = config.TargetGuild, TargetChannel = config.TargetChannel, TargetRange = "today" };
                 await SendManualReport(reportReq);
                 return;
             }
 
-            // 設定なし -> 従来通り (タスク発生元へ送信)
+            // 設定がない場合は従来通り発生元へ送信
             DateTime reportStart = (now.Hour == 0 && now.Minute < 5) ? now.Date.AddDays(-1) : now.Date;
             List<TaskItem> reportTasks;
             lock (Globals.Lock) { reportTasks = Globals.AllTasks.Where(t => t.UserId == userId && t.CompletedAt != null && t.CompletedAt >= reportStart).ToList(); }
-
-            if (reportTasks.Count == 0) { if (feedbackChannel != null) await feedbackChannel.SendMessageAsync("本日の完了タスクはありません。"); return; }
+            if (reportTasks.Count == 0) return;
 
             var u = _client.GetUser(userId);
             string un = u?.Username ?? "User";
@@ -316,7 +460,7 @@ namespace TToDo
                     sb.AppendLine($"🌅 **Daily Report: {un}** ({Globals.GetJstNow():yyyy/MM/dd})");
                     sb.AppendLine($"**{group.Count()}件** 完了！");
                     sb.AppendLine("```");
-                    foreach (var tGroup in group.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "その他")) { sb.AppendLine($"【{tGroup.Key}】"); foreach (var t in tGroup) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}"); sb.AppendLine(); }
+                    foreach (var t in group) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}");
                     sb.AppendLine("```");
                     await targetChannel.SendMessageAsync(sb.ToString());
                 }
@@ -348,5 +492,8 @@ namespace TToDo
                 catch { await Task.Delay(1000); }
             }
         }
+
+        private int GetSortScore(TaskItem t) { if (t.CompletedAt != null) return -10; if (t.IsSnoozed) return -1; if (t.Priority == 1) return 10; return 1; }
+        private string GetPriorityLabel(int p) { if (p == 1) return "重要"; return "普通"; }
     }
 }
