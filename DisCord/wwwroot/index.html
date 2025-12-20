@@ -8,7 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* タグ編集用の追加スタイル */
         .edit-tag {
             background-color: var(--primary-color);
             color: white;
@@ -91,7 +90,7 @@
                                 <span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span>
                                 <span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
                                 <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
-                                <span v-if="task.priority > -1" class="tag prio-tag">{{ getPrioLabel(task) }}</span>
+                                <span v-if="task.priority !== 0" class="tag prio-tag">{{ getPrioLabel(task) }}</span>
                             </div>
                             <div class="text">{{ task.content }}</div>
                         </div>
@@ -195,9 +194,9 @@
                 <div class="form-group">
                     <label>優先度</label>
                     <div class="chip-group">
-                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">重要</div>
+                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">高 (!)</div>
                         <div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">普通</div>
-                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">なし</div>
+                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">低 (?)</div>
                     </div>
                 </div>
                 <div class="modal-actions"><button class="btn btn-cancel" @click="editForm = null">キャンセル</button><button class="btn btn-save" @click="saveTask">保存</button></div>
@@ -294,7 +293,6 @@
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
                     showFilterMenu: false, filterUsers: [], filterChannels: [],
-                    // タグ編集用
                     newTagInput: '', selectedExistingTag: ''
                 }
             },
@@ -307,7 +305,6 @@
                 uniqueUsers() { return [...new Set(this.tasks.map(t => t.userName).filter(n => n))].sort(); },
                 uniqueChannels() { return [...new Set(this.tasks.map(t => t.guildName + ' / ' + t.channelName).filter(n => n.length > 3))].sort(); },
                 existingGuilds() { return [...new Set(this.tasks.map(t => t.guildName).filter(n => n))].sort(); },
-                // 全タスクからユニークなタグを抽出
                 uniqueTags() { return [...new Set(this.tasks.flatMap(t => t.tags))].sort(); },
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
                 filteredTasks() {
@@ -372,17 +369,15 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-                    // tags配列で管理するように変更
-                    this.editForm = { content: '', priority: -1, difficulty: -1, tags: [], assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
+                    // デフォルト普通(0)
+                    this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: this.myUserName || '', userName: this.myUserName || '', guildName: '', channelName: '' };
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
                 openEdit(task) {
                     this.isCreating = false;
-                    // 既存タスクのタグをコピー
                     this.editForm = { ...task, tags: [...task.tags] };
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
-                // タグ追加削除処理
                 removeTag(tag) {
                     this.editForm.tags = this.editForm.tags.filter(t => t !== tag);
                 },
@@ -401,7 +396,6 @@
                 },
                 async saveTask() {
                     if (!this.editForm.content) { alert('内容を入力してください'); return; }
-                    // tagsはそのまま配列として送信
                     const payload = { ...this.editForm };
                     if (this.isCreating) {
                         if (this.myUserId) payload.userId = this.myUserId;
@@ -427,7 +421,6 @@
 
                     const today = new Date(); today.setHours(0, 0, 0, 0);
 
-                    // 期間フィルタリング
                     let start = new Date(today);
                     let end = new Date(today);
                     end.setDate(end.getDate() + 1);
@@ -509,10 +502,13 @@
                 async moveToArchive(t) { if (!t.isForgotten) { t.isForgotten = true; await this.post('/api/archive', t); } },
                 async deleteTask(t) { if (confirm('完全削除しますか？')) await this.post('/api/delete', t); },
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
+                // ★修正: ソートロジック
                 applySort(l) { if (this.sortMode === 'category') { return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a))); } return l.sort((a, b) => this.getScore(b) - this.getScore(a)); },
-                getScore(t) { return (t.priority === 1 ? 10 : t.priority === 0 ? 5 : 1); },
-                getPrioLabel(t) { return t.priority === 1 ? '重要' : (t.priority === 0 ? '普通' : ''); },
-                getPrioClass(t) { return t.priority === 1 ? (t.difficulty === 1 ? 'p-1' : 'p-2') : (t.priority === 0 ? (t.difficulty === 1 ? 'p-3' : 'p-4') : 'p-0'); },
+                // ★修正: スコアロジック (高10, 普5, 低1)
+                getScore(t) { return (t.priority === 1 ? 10 : (t.priority === 0 ? 5 : 1)); },
+                getPrioLabel(t) { return t.priority === 1 ? '高' : (t.priority === -1 ? '低' : ''); },
+                // ★修正: クラスマッピング (p-1:赤, p-3:黄/低, p-4:灰/普)
+                getPrioClass(t) { return t.priority === 1 ? 'p-1' : (t.priority === 0 ? 'p-4' : 'p-3'); },
                 formatTime(iso) { if (!iso) return ''; const d = new Date(iso); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); }
             }
         }).mount('#app')

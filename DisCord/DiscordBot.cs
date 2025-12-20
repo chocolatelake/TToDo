@@ -112,20 +112,20 @@ namespace TToDo
             sb.AppendLine("📖 **TToDo Help**");
             sb.AppendLine($"Web Board: {Globals.PublicUrl}");
             sb.AppendLine("");
-            sb.AppendLine("`!ttodo report today`");
-            sb.AppendLine("今日の完了タスク(日報)を表示します。");
-            sb.AppendLine("");
-            sb.AppendLine("`!ttodo report yesterday`");
-            sb.AppendLine("昨日の完了タスク(日報)を表示します。");
+            sb.AppendLine("`!ttodo [タスク内容]`");
+            sb.AppendLine("タスクを追加します。");
+            sb.AppendLine("・`!` 先頭で「優先度：高」");
+            sb.AppendLine("・`?` 先頭で「優先度：低」");
+            sb.AppendLine("・`#タグ名` でタグ付け");
             sb.AppendLine("");
             sb.AppendLine("`!ttodo list`");
             sb.AppendLine("自分の未完了タスク一覧を表示します。");
             sb.AppendLine("");
+            sb.AppendLine("`!ttodo report today`");
+            sb.AppendLine("今日の完了タスク(日報)を表示します。");
+            sb.AppendLine("");
             sb.AppendLine("`!ttodo web`");
             sb.AppendLine("Web管理画面のURLを表示します。");
-            sb.AppendLine("");
-            sb.AppendLine("`!ttodo [タスク内容]`");
-            sb.AppendLine("タスクを追加します。複数行、`!!`重要、`#タグ` も可能です。");
 
             await c.SendMessageAsync(sb.ToString());
         }
@@ -176,9 +176,22 @@ namespace TToDo
                 {
                     if (pendingTask != null) { lock (Globals.Lock) Globals.AllTasks.Add(pendingTask); addedTasks.Add(pendingTask); }
 
-                    int prio = -1; int diff = -1; string content = trimLine;
-                    if (content.StartsWith("!!") || content.StartsWith("！！")) { prio = 1; diff = 1; content = content.Substring(2); }
-                    else if (content.StartsWith("!")) { prio = 1; diff = 0; content = content.Substring(1); }
+                    // ★修正: 優先度判定ロジック (3段階)
+                    int prio = 0; // 0: 普通
+                    string content = trimLine;
+
+                    if (content.StartsWith("!") || content.StartsWith("！"))
+                    {
+                        prio = 1; // 1: 高い
+                        content = content.Substring(1);
+                        if (content.StartsWith("!") || content.StartsWith("！")) content = content.Substring(1); // "!!" も許容して1文字削る
+                    }
+                    else if (content.StartsWith("?") || content.StartsWith("？"))
+                    {
+                        prio = -1; // -1: 低い
+                        content = content.Substring(1);
+                        if (content.StartsWith("?") || content.StartsWith("？")) content = content.Substring(1);
+                    }
 
                     content = content.Trim();
                     if (!string.IsNullOrWhiteSpace(content))
@@ -194,7 +207,7 @@ namespace TToDo
                             ChannelName = channelName,
                             Content = content,
                             Priority = prio,
-                            Difficulty = diff,
+                            Difficulty = 0, // Difficultyは使わないので0固定
                             Tags = new List<string>(currentTags)
                         };
                     }
@@ -233,11 +246,10 @@ namespace TToDo
                     string state = task.CompletedAt != null ? "✅ " : "";
                     string display = task.Content.Split('\n')[0];
                     if (display.Length > 25) display = display.Substring(0, 25) + "...";
-
-                    // ★修正: 完了時は取り消し線をつける
                     if (task.CompletedAt != null) display = $"~~{display}~~";
 
-                    sb.AppendLine($"`[{label}]` {state}{display}");
+                    string labelStr = string.IsNullOrEmpty(label) ? "" : $"`[{label}]` ";
+                    sb.AppendLine($"{labelStr}{state}{display}");
                 }
             }
 
@@ -252,8 +264,10 @@ namespace TToDo
                 string contentLabel = task.Content.Replace("\n", " ");
                 if (contentLabel.Length > 45) contentLabel = contentLabel.Substring(0, 42) + "...";
 
+                string labelPrefix = string.IsNullOrEmpty(label) ? "" : $"[{label}] ";
+
                 var option = new SelectMenuOptionBuilder()
-                    .WithLabel($"[{label}] {contentLabel}")
+                    .WithLabel($"{labelPrefix}{contentLabel}")
                     .WithValue(task.Id)
                     .WithDescription(task.Tags.Count > 0 ? task.Tags[0] : "未分類");
 
@@ -494,7 +508,23 @@ namespace TToDo
             }
         }
 
-        private int GetSortScore(TaskItem t) { if (t.CompletedAt != null) return -10; if (t.IsSnoozed) return -1; if (t.Priority == 1) return 10; return 1; }
-        private string GetPriorityLabel(int p) { if (p == 1) return "重要"; return "普通"; }
+        // ★修正: ソートスコア（高 > 普通 > 低）
+        private int GetSortScore(TaskItem t)
+        {
+            if (t.CompletedAt != null) return -10;
+            if (t.IsSnoozed) return -1;
+
+            if (t.Priority == 1) return 10; // 高
+            if (t.Priority == 0) return 5;  // 普通
+            return 1; // 低 (-1)
+        }
+
+        // ★修正: ラベル表示
+        private string GetPriorityLabel(int p)
+        {
+            if (p == 1) return "高";
+            if (p == -1) return "低";
+            return "";
+        }
     }
 }
