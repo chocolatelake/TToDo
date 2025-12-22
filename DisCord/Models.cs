@@ -20,6 +20,8 @@ namespace TToDo
         public bool IsSnoozed { get; set; }
         public bool IsForgotten { get; set; }
         public DateTime? CompletedAt { get; set; }
+        // ★追加: 日報で報告済みかどうかのフラグ
+        public bool IsReported { get; set; }
     }
 
     public class UserConfig
@@ -52,7 +54,6 @@ namespace TToDo
         public string SourceGuild { get; set; } = "";
         public string SourceChannel { get; set; } = "";
 
-        // ★追加: 対象期間 ("today" or "yesterday")
         public string TargetRange { get; set; } = "today";
     }
 }
