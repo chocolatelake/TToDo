@@ -70,11 +70,10 @@ namespace TToDo
             string lower = content.ToLowerInvariant();
 
             string arg1 = "";
-            // ★修正: コマンド分岐
-            if (lower.StartsWith("!ttodolist")) arg1 = "list";          // 未完了のみ
-            else if (lower.StartsWith("!ttodofull")) arg1 = "list full"; // 全て (完了・アーカイブ含む)
-            else if (lower.StartsWith("!ttododone")) arg1 = "list done"; // 完了のみ
-            else if (lower.StartsWith("!ttodoarchive")) arg1 = "list archive"; // アーカイブのみ
+            if (lower.StartsWith("!ttodolist")) arg1 = "list";
+            else if (lower.StartsWith("!ttodofull")) arg1 = "list full";
+            else if (lower.StartsWith("!ttododone")) arg1 = "list done";
+            else if (lower.StartsWith("!ttodoarchive")) arg1 = "list archive";
             else if (lower.StartsWith("!ttodohelp")) arg1 = "help";
             else if (lower.StartsWith("!ttodoweb")) arg1 = "web";
             else if (lower.StartsWith("!ttodotoday")) arg1 = "report today";
@@ -107,7 +106,6 @@ namespace TToDo
 
             if (arg1.StartsWith("list", StringComparison.OrdinalIgnoreCase))
             {
-                // リスト種別の判定
                 string type = "todo";
                 if (arg1.Contains("full")) type = "full";
                 else if (arg1.Contains("done")) type = "done";
@@ -241,7 +239,7 @@ namespace TToDo
             if (addedTasks.Count > 0) await ShowCompactList(channel, user, "todo");
         }
 
-        // --- 機能実装: リスト表示 (引数 type 追加) ---
+        // --- 機能実装: リスト表示 ---
         private (string Text, MessageComponent? Components) BuildListView(ulong userId, ulong channelId, string type)
         {
             var user = _client.GetUser(userId);
@@ -251,30 +249,12 @@ namespace TToDo
             lock (Globals.Lock)
             {
                 var query = Globals.AllTasks.AsEnumerable();
-
-                // ★修正: 担当者(Assignee)でフィルタ。作成者(UserId)フォールバックは廃止。
                 query = query.Where(t => !string.IsNullOrEmpty(t.Assignee) && t.Assignee == username);
 
-                // ★種別ごとのフィルタ
-                if (type == "done")
-                {
-                    // 完了のみ (アーカイブ除く)
-                    query = query.Where(t => t.CompletedAt != null && !t.IsForgotten);
-                }
-                else if (type == "archive")
-                {
-                    // アーカイブのみ
-                    query = query.Where(t => t.IsForgotten);
-                }
-                else if (type == "full")
-                {
-                    // 全て (フィルタなし)
-                }
-                else // "todo" (default)
-                {
-                    // 未完了のみ (アーカイブ除く)
-                    query = query.Where(t => t.CompletedAt == null && !t.IsForgotten);
-                }
+                if (type == "done") query = query.Where(t => t.CompletedAt != null && !t.IsForgotten);
+                else if (type == "archive") query = query.Where(t => t.IsForgotten);
+                else if (type == "full") { }
+                else query = query.Where(t => t.CompletedAt == null && !t.IsForgotten);
 
                 visibleTasks = query.OrderByDescending(t => GetSortScore(t)).ToList();
             }
@@ -496,7 +476,7 @@ namespace TToDo
             return true;
         }
 
-        // --- 自動日報処理 (修正版) ---
+        // --- 自動日報処理 (仕様変更版: 個別送信＋任意で一括送信) ---
         private async Task RunDailyClose(ulong userId)
         {
             // 1. 「報告済み(IsReported)」のタスクを削除 (昨日完了分を削除)
@@ -523,7 +503,7 @@ namespace TToDo
 
             if (string.IsNullOrEmpty(targetUserName)) return;
 
-            // ★修正: 担当者(Assignee)でフィルタして完了タスクを収集
+            // 担当者(Assignee)でフィルタして完了タスクを収集
             DateTime reportStart = (now.Hour == 0 && now.Minute < 5) ? now.Date.AddDays(-1) : now.Date;
             List<TaskItem> reportTasks;
             lock (Globals.Lock)
@@ -533,26 +513,21 @@ namespace TToDo
                     .ToList();
             }
 
-            // 2. 日報送信
-            if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
+            // 2. 日報送信処理
+
+            // 【STEP A】各発生元チャンネルへ個別送信 (常に実行)
+            if (reportTasks.Count > 0)
             {
-                // 設定あり: 指定チャンネルへ
-                var reportReq = new ReportRequest { TargetUser = config.UserName, TargetGuild = config.TargetGuild, TargetChannel = config.TargetChannel, TargetRange = "today" };
-                await SendManualReport(reportReq);
-            }
-            else
-            {
-                // 設定なし: 発生元チャンネルへ
-                if (reportTasks.Count > 0)
+                foreach (var group in reportTasks.GroupBy(t => t.ChannelId))
                 {
-                    foreach (var group in reportTasks.GroupBy(t => t.ChannelId))
+                    try
                     {
-                        try
+                        ulong chId = group.Key;
+                        var targetChannel = _client.GetChannel(chId) as ISocketMessageChannel;
+                        if (targetChannel == null) try { targetChannel = await _client.GetChannelAsync(chId) as ISocketMessageChannel; } catch { }
+
+                        if (targetChannel != null)
                         {
-                            ulong chId = group.Key;
-                            var targetChannel = _client.GetChannel(chId) as ISocketMessageChannel;
-                            if (targetChannel == null) try { targetChannel = await _client.GetChannelAsync(chId) as ISocketMessageChannel; } catch { }
-                            if (targetChannel == null) continue;
                             var sb = new StringBuilder();
                             sb.AppendLine($"🌅 **Daily Report: {targetUserName}** ({Globals.GetJstNow():yyyy/MM/dd})");
                             sb.AppendLine($"**{group.Count()}件** 完了！");
@@ -561,9 +536,29 @@ namespace TToDo
                             sb.AppendLine("```");
                             await targetChannel.SendMessageAsync(sb.ToString());
                         }
-                        catch { }
                     }
+                    catch { }
                 }
+            }
+
+            // 【STEP B】指定チャンネルへ一括送信 (設定がある場合のみ追加実行)
+            if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
+            {
+                // SendManualReportのロジックに合わせて対象期間を設定
+                // 0時台の実行なら「昨日」として処理
+                string range = "today";
+                if (now.Hour == 0 && now.Minute < 5) range = "yesterday";
+
+                var reportReq = new ReportRequest
+                {
+                    TargetUser = targetUserName,
+                    TargetGuild = config.TargetGuild,
+                    TargetChannel = config.TargetChannel,
+                    TargetRange = range
+                };
+
+                // 手動レポート送信機能を流用して一括送信
+                await SendManualReport(reportReq);
             }
 
             // 3. フラグ更新 (今回報告したタスクを「報告済み」にする)
@@ -591,7 +586,6 @@ namespace TToDo
                     {
                         string curTime = now.ToString("HH:mm");
 
-                        // ★修正: 設定済みユーザー(Config)ベースでループ
                         List<ulong> targetUserIds;
                         lock (Globals.Lock)
                         {
