@@ -63,14 +63,11 @@ namespace TToDo
                         if (newId.HasValue) item.ChannelId = newId.Value;
                     }
 
-                    // 新規作成時のアイコン取得 (DBキャッシュ対応)
                     if (!string.IsNullOrEmpty(item.Assignee))
                     {
                         string newUrl = "";
-                        // 1. Discordから取得を試みる
                         if (DiscordBot.Instance != null) newUrl = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
 
-                        // 2. 失敗したら、既存タスクから同じ名前の人のアイコンを探す (バックアップ)
                         if (string.IsNullOrEmpty(newUrl))
                         {
                             var existing = Globals.AllTasks.FirstOrDefault(x =>
@@ -100,19 +97,15 @@ namespace TToDo
                             if (newId.HasValue) t.ChannelId = newId.Value;
                         }
 
-                        // 更新時のアイコン取得ロジック
                         bool assigneeChanged = t.Assignee != item.Assignee;
 
                         if (assigneeChanged)
                         {
-                            // 担当者が設定された場合
                             if (!string.IsNullOrEmpty(item.Assignee))
                             {
                                 string newUrl = "";
-                                // 1. Discordから取得
                                 if (DiscordBot.Instance != null) newUrl = DiscordBot.Instance.ResolveAvatarUrl(item.Assignee);
 
-                                // 2. 失敗時はDBキャッシュから取得
                                 if (string.IsNullOrEmpty(newUrl))
                                 {
                                     var existing = Globals.AllTasks.FirstOrDefault(x =>
@@ -120,17 +113,13 @@ namespace TToDo
                                         && !string.IsNullOrEmpty(x.AvatarUrl));
                                     if (existing != null) newUrl = existing.AvatarUrl;
                                 }
-
-                                // アイコン情報を更新 (取れなかったら空文字になるが、それでOK)
                                 t.AvatarUrl = newUrl;
                             }
-                            // 担当者が外された場合
                             else
                             {
                                 t.AvatarUrl = "";
                             }
                         }
-                        // 担当者は変わってないが、アイコン情報が欠落している場合 (再取得トライ)
                         else if (!string.IsNullOrEmpty(t.Assignee) && string.IsNullOrEmpty(t.AvatarUrl))
                         {
                             if (DiscordBot.Instance != null) t.AvatarUrl = DiscordBot.Instance.ResolveAvatarUrl(t.Assignee);
@@ -152,7 +141,7 @@ namespace TToDo
                         t.GuildName = item.GuildName;
                         t.ChannelName = item.ChannelName;
 
-                        // ★追加: 日付と工数モードの更新
+                        // 追加: 日付と工数モードの更新
                         t.StartDate = item.StartDate;
                         t.DueDate = item.DueDate;
                         t.TimeMode = item.TimeMode;

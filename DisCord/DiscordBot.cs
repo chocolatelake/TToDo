@@ -230,6 +230,7 @@ namespace TToDo
                             Priority = prio,
                             Difficulty = 0,
                             Tags = new List<string>(currentTags),
+                            // デフォルト日付: 今日 ～ 1週間後
                             StartDate = Globals.GetJstNow().Date,
                             DueDate = Globals.GetJstNow().Date.AddDays(7),
                             TimeMode = 0 // 不明
@@ -274,9 +275,7 @@ namespace TToDo
             sb.AppendLine($"📂 **タスク一覧{titleSuffix} ({visibleTasks.Count}件):**");
             sb.AppendLine($"🌍 {Globals.PublicUrl}");
 
-            // ★変更: シンプルなテキスト表示 (インデントなし)
-            // 階層: 自動ラベル -> タグ -> タスク
-
+            // 4階層構造: 自動判定ラベル > タグ > 手動優先度 > タスク
             var autoPrioGroups = visibleTasks.GroupBy(t => GetAutoPriorityLabel(t));
 
             foreach (var autoGroup in autoPrioGroups)
@@ -290,7 +289,7 @@ namespace TToDo
                     // タグ (見出し・太字)
                     sb.AppendLine($"**{tagGroup.Key}**");
 
-                    // タスク一覧 (優先度順に並べる)
+                    // 手動優先度で並べ替え
                     foreach (var task in tagGroup.OrderByDescending(t => t.Priority))
                     {
                         // 優先度バッジ
@@ -302,7 +301,7 @@ namespace TToDo
                         if (display.Length > 25) display = display.Substring(0, 25) + "...";
                         if (task.CompletedAt != null && type != "done") display = $"~~{display}~~";
 
-                        // インデントなしで表示
+                        // インデントなしのテキスト形式
                         sb.AppendLine($"{pBadge}{state}{display}");
                     }
                 }
@@ -499,6 +498,7 @@ namespace TToDo
         // --- 自動日報処理 ---
         private async Task RunDailyClose(ulong userId)
         {
+            // まず不要なデータを削除 (前回の名残)
             lock (Globals.Lock)
             {
                 Globals.AllTasks.RemoveAll(t => t.UserId == userId && t.IsReported);
@@ -520,15 +520,16 @@ namespace TToDo
 
             if (string.IsNullOrEmpty(targetUserName)) return;
 
-            DateTime reportStart = (now.Hour == 0 && now.Minute < 5) ? now.Date.AddDays(-1) : now.Date;
+            // 修正: 完了済み未報告タスクを全て取得 (過去分も含む)
             List<TaskItem> reportTasks;
             lock (Globals.Lock)
             {
                 reportTasks = Globals.AllTasks
-                    .Where(t => t.Assignee == targetUserName && t.CompletedAt != null && t.CompletedAt >= reportStart && !t.IsReported)
+                    .Where(t => t.Assignee == targetUserName && t.CompletedAt != null && !t.IsReported)
                     .ToList();
             }
 
+            // 日報送信
             if (reportTasks.Count > 0)
             {
                 foreach (var group in reportTasks.GroupBy(t => t.ChannelId))
@@ -545,7 +546,7 @@ namespace TToDo
                             sb.AppendLine($"🌅 **Daily Report: {targetUserName}** ({Globals.GetJstNow():yyyy/MM/dd})");
                             sb.AppendLine($"**{group.Count()}件** 完了！");
                             sb.AppendLine("```");
-                            foreach (var t in group) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}");
+                            foreach (var t in group) sb.AppendLine($"・[{t.CompletedAt:MM/dd HH:mm}] {t.Content}");
                             sb.AppendLine("```");
                             await targetChannel.SendMessageAsync(sb.ToString());
                         }
@@ -554,6 +555,7 @@ namespace TToDo
                 }
             }
 
+            // 一括送信 (設定がある場合)
             if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
             {
                 string range = "today";
@@ -570,13 +572,14 @@ namespace TToDo
                 await SendManualReport(reportReq);
             }
 
+            // 修正: 報告対象となったタスクを即時削除
             if (reportTasks.Count > 0)
             {
                 lock (Globals.Lock)
                 {
                     foreach (var t in reportTasks)
                     {
-                        t.IsReported = true;
+                        Globals.AllTasks.Remove(t);
                     }
                     Globals.SaveData();
                 }
@@ -622,6 +625,7 @@ namespace TToDo
             }
         }
 
+        // 自動優先度計算
         private int GetAutoScore(TaskItem t)
         {
             int timeScore = 300;
@@ -641,6 +645,7 @@ namespace TToDo
             return timeScore + dateScore;
         }
 
+        // 自動優先度ラベル
         private string GetAutoPriorityLabel(TaskItem t)
         {
             string timeLabel = "不明";

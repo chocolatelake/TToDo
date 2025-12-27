@@ -821,12 +821,12 @@
 
                 // 自動優先度スコア計算
                 getAutoScore(t) {
-                    // 1. 時間スコア (短=100, 長=200, 未=300)
+                    // 1. 時間スコア (短い=100, 長い=200, 不明=300)
                     let timeScore = 300;
                     if (t.timeMode === 1) timeScore = 100;
                     else if (t.timeMode === 2) timeScore = 200;
 
-                    // 2. 期日スコア (近=10, 遠=20, 未=30)
+                    // 2. 期日スコア (近い=10, 遠い=20, 不明=30)
                     let dateScore = 30;
                     if (t.dueDate) {
                         const due = new Date(t.dueDate);
@@ -844,7 +844,7 @@
 
                 // 自動優先度ラベル取得
                 getAutoPriorityLabel(t) {
-                    // ★変更: '短' -> '短い', '長' -> '長い', '近'->'近い', '遠'->'遠い'
+                    // '不明', '短い', '長い'
                     const timeLabels = { 0: '不明', 1: '短い', 2: '長い' };
                     let dateLabel = '不明';
                     if (t.dueDate) {
