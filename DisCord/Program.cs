@@ -63,7 +63,7 @@ namespace TToDo
                         if (newId.HasValue) item.ChannelId = newId.Value;
                     }
 
-                    // ★修正: 新規作成時のアイコン取得 (DBキャッシュ対応)
+                    // 新規作成時のアイコン取得 (DBキャッシュ対応)
                     if (!string.IsNullOrEmpty(item.Assignee))
                     {
                         string newUrl = "";
@@ -100,7 +100,7 @@ namespace TToDo
                             if (newId.HasValue) t.ChannelId = newId.Value;
                         }
 
-                        // ★修正: 更新時のアイコン取得ロジック
+                        // 更新時のアイコン取得ロジック
                         bool assigneeChanged = t.Assignee != item.Assignee;
 
                         if (assigneeChanged)
@@ -127,7 +127,6 @@ namespace TToDo
                             // 担当者が外された場合
                             else
                             {
-                                // ★ここを変更: 作成者に戻すのではなく、完全に空にする
                                 t.AvatarUrl = "";
                             }
                         }
@@ -152,6 +151,12 @@ namespace TToDo
                         t.Assignee = item.Assignee;
                         t.GuildName = item.GuildName;
                         t.ChannelName = item.ChannelName;
+
+                        // ★追加: 日付と工数モードの更新
+                        t.StartDate = item.StartDate;
+                        t.DueDate = item.DueDate;
+                        t.TimeMode = item.TimeMode;
+
                         Globals.SaveData();
                     }
                 }

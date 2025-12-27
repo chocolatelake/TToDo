@@ -95,6 +95,49 @@
             display: inline-flex;
             align-items: center;
         }
+
+        /* エラー時のスタイル */
+        .form-control.is-invalid {
+            border-color: #dc3545;
+            background-color: #fff8f8;
+        }
+
+        .error-msg {
+            color: #dc3545;
+            font-size: 0.75rem;
+            margin-top: 2px;
+            margin-left: 2px;
+        }
+
+        /* 自動優先度ラベルのスタイル */
+        .auto-prio-tag {
+            font-weight: bold;
+            border: 1px solid transparent;
+        }
+        /* 短い・近い (最優先) */
+        .prio-lv1 {
+            background: #ffebee;
+            color: #c62828;
+            border-color: #ef9a9a;
+        }
+        /* 短い・遠い */
+        .prio-lv2 {
+            background: #e3f2fd;
+            color: #1565c0;
+            border-color: #90caf9;
+        }
+        /* 長い・近い (要注意) */
+        .prio-lv3 {
+            background: #fff3e0;
+            color: #ef6c00;
+            border-color: #ffcc80;
+        }
+        /* その他 */
+        .prio-lv4 {
+            background: #f5f5f5;
+            color: #616161;
+            border-color: #e0e0e0;
+        }
     </style>
 </head>
 <body>
@@ -114,9 +157,11 @@
                 <button class="btn-sort" @click="showFilterMenu = !showFilterMenu">🔍 絞り込み</button>
                 <span class="divider">|</span>
                 <button v-if="userId" class="btn-sort" @click="openBatchChannelModal">📡 送信先一括</button>
+
                 <span class="sort-label">順序:</span>
-                <button class="btn-sort" :class="{active: sortMode==='priority'}" @click="sortMode='priority'">🔥</button>
-                <button class="btn-sort" :class="{active: sortMode==='category'}" @click="sortMode='category'">🏷️</button>
+                <button class="btn-sort" :class="{active: sortMode==='auto'}" @click="sortMode='auto'" title="自動(時間×期日)">🤖</button>
+                <button class="btn-sort" :class="{active: sortMode==='priority'}" @click="sortMode='priority'" title="手動優先度">🔥</button>
+                <button class="btn-sort" :class="{active: sortMode==='category'}" @click="sortMode='category'" title="カテゴリ">🏷️</button>
             </div>
         </header>
 
@@ -179,7 +224,11 @@
                                 <span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span>
                                 <span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
                                 <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
-                                <span class="tag prio-tag">{{ getPrioLabel(task) }}</span>
+                                <span class="tag" v-if="task.startDate" style="background:#eef; color:#448;">🚀 {{ formatDateShort(task.startDate) }}～</span>
+
+                                <span class="tag auto-prio-tag" :class="getAutoPriorityClass(task)">{{ getAutoPriorityLabel(task) }}</span>
+
+                                <span class="tag" v-if="task.dueDate" :style="getDueDateStyle(task)">📅 ～{{ formatDateShort(task.dueDate) }}</span>
                             </div>
                             <div class="text">{{ task.content }}</div>
                         </div>
@@ -290,13 +339,49 @@
                 </div>
 
                 <div class="form-group">
-                    <label>優先度</label>
+                    <label>時間 (工数)</label>
+                    <div class="chip-group">
+                        <div class="chip" :class="{selected: editForm.timeMode===1}" @click="editForm.timeMode=1">短い</div>
+                        <div class="chip" :class="{selected: editForm.timeMode===2}" @click="editForm.timeMode=2">長い</div>
+                        <div class="chip" :class="{selected: editForm.timeMode===0}" @click="editForm.timeMode=0">不明</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>期間</label>
+                    <div class="row" style="display: flex; gap: 10px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8rem; color: #666;">開始日</label>
+                            <input type="text" class="form-control"
+                                   :class="{'is-invalid': editForm.startDate && !isValidDate(editForm.startDate)}"
+                                   v-model="editForm.startDate"
+                                   @blur="onDateBlur('startDate')"
+                                   @input="filterDateInput($event, 'startDate')"
+                                   placeholder="yyyyMMdd" maxlength="10">
+                            <div v-if="editForm.startDate && !isValidDate(editForm.startDate)" class="error-msg">※無効な日付です</div>
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.8rem; color: #666;">期日</label>
+                            <input type="text" class="form-control"
+                                   :class="{'is-invalid': editForm.dueDate && !isValidDate(editForm.dueDate)}"
+                                   v-model="editForm.dueDate"
+                                   @blur="onDateBlur('dueDate')"
+                                   @input="filterDateInput($event, 'dueDate')"
+                                   placeholder="yyyyMMdd" maxlength="10">
+                            <div v-if="editForm.dueDate && !isValidDate(editForm.dueDate)" class="error-msg">※無効な日付です</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="opacity: 0.7;">
+                    <label style="font-size: 0.8rem;">手動マーカー (優先度)</label>
                     <div class="chip-group">
                         <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">高</div>
-                        <div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">普通</div>
+                        <div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">中</div>
                         <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">低</div>
                     </div>
                 </div>
+
                 <div class="modal-actions"><button class="btn btn-cancel" @click="editForm = null">キャンセル</button><button class="btn btn-save" @click="saveTask">保存</button></div>
             </div>
         </div>
@@ -395,10 +480,12 @@
             data() {
                 return {
                     tasks: [], configs: [], loading: true, editForm: null, isCreating: false,
-                    sortMode: 'priority', userId: null, myUserId: null,
+                    // デフォルトで自動優先度ソートにする
+                    sortMode: 'auto',
+                    userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
                     showReportModal: false, reportForm: { targetUser: '', guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }, reportPreview: '',
-                    isExportMode: false, exportScope: 'all', // ★追加: エクスポート範囲
+                    isExportMode: false, exportScope: 'all',
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
                     showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [],
                     newTagInput: '', selectedExistingTag: ''
@@ -525,12 +612,28 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-                    this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: '', userName: '', guildName: '', channelName: '' };
+
+                    // 新規作成時：開始日=今日、期日=1週間後 をデフォルトセット
+                    const now = new Date();
+                    const nextWeek = new Date();
+                    nextWeek.setDate(now.getDate() + 7);
+
+                    const fmt = (d) => d.getFullYear() + '-' + (d.getMonth() + 1).toString().padStart(2, '0') + '-' + d.getDate().toString().padStart(2, '0');
+
+                    this.editForm = {
+                        content: '', priority: 0, difficulty: 0, tags: [], assignee: '',
+                        userName: '', guildName: '', channelName: '',
+                        startDate: fmt(now), dueDate: fmt(nextWeek), timeMode: 0
+                    };
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
                 openEdit(task) {
                     this.isCreating = false;
                     this.editForm = { ...task, tags: [...task.tags] };
+
+                    if (this.editForm.startDate) this.editForm.startDate = this.editForm.startDate.split('T')[0];
+                    if (this.editForm.dueDate) this.editForm.dueDate = this.editForm.dueDate.split('T')[0];
+
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
                 removeTag(tag) {
@@ -551,6 +654,15 @@
                 },
                 async saveTask() {
                     if (!this.editForm.content) { alert('内容を入力してください'); return; }
+
+                    // 日付バリデーション
+                    if (this.editForm.startDate && !this.isValidDate(this.editForm.startDate)) {
+                        alert('開始日が無効な日付形式です。'); return;
+                    }
+                    if (this.editForm.dueDate && !this.isValidDate(this.editForm.dueDate)) {
+                        alert('期日が無効な日付形式です。'); return;
+                    }
+
                     const payload = { ...this.editForm };
                     await fetch(this.isCreating ? '/api/create' : '/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     this.editForm = null; this.fetchTasks();
@@ -565,19 +677,16 @@
                     this.updateReportPreview();
                     this.showReportModal = true;
                 },
-                // ★修正: リスト出力を開始する
                 exportList(scope) {
                     this.isExportMode = true;
                     this.exportScope = scope;
                     this.generateExportText();
                     this.showReportModal = true;
                 },
-                // ★追加: チップで範囲を切り替えたとき
                 changeExportScope(scope) {
                     this.exportScope = scope;
                     this.generateExportText();
                 },
-                // ★追加: テキスト生成ロジックを分離
                 generateExportText() {
                     const scope = this.exportScope;
                     let text = "";
@@ -709,10 +818,129 @@
                 async moveToArchive(t) { if (!t.isForgotten) { t.isForgotten = true; await this.post('/api/archive', t); } },
                 async deleteTask(t) { if (confirm('完全削除しますか？')) await this.post('/api/delete', t); },
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
-                applySort(l) { if (this.sortMode === 'category') { return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a))); } return l.sort((a, b) => this.getScore(b) - this.getScore(a)); },
+
+                // 自動優先度スコア計算
+                getAutoScore(t) {
+                    // 1. 時間スコア (短=100, 長=200, 未=300)
+                    let timeScore = 300;
+                    if (t.timeMode === 1) timeScore = 100;
+                    else if (t.timeMode === 2) timeScore = 200;
+
+                    // 2. 期日スコア (近=10, 遠=20, 未=30)
+                    let dateScore = 30;
+                    if (t.dueDate) {
+                        const due = new Date(t.dueDate);
+                        const now = new Date();
+                        now.setHours(0, 0, 0, 0);
+                        const diffTime = due - now;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                        if (diffDays <= 3) dateScore = 10; // 3日以内なら近い
+                        else dateScore = 20;
+                    }
+
+                    return timeScore + dateScore;
+                },
+
+                // 自動優先度ラベル取得
+                getAutoPriorityLabel(t) {
+                    // ★変更: '短' -> '短い', '長' -> '長い', '近'->'近い', '遠'->'遠い'
+                    const timeLabels = { 0: '不明', 1: '短い', 2: '長い' };
+                    let dateLabel = '不明';
+                    if (t.dueDate) {
+                        const due = new Date(t.dueDate);
+                        const now = new Date();
+                        now.setHours(0, 0, 0, 0);
+                        const diffTime = due - now;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        if (diffDays <= 3) dateLabel = '近い';
+                        else dateLabel = '遠い';
+                    }
+                    return `【${timeLabels[t.timeMode || 0]}・${dateLabel}】`;
+                },
+
+                // スコアによる色分け
+                getAutoPriorityClass(t) {
+                    const score = this.getAutoScore(t);
+                    if (score <= 110) return 'prio-lv1'; // 短・近
+                    if (score <= 120) return 'prio-lv2'; // 短・遠
+                    if (score <= 210) return 'prio-lv3'; // 長・近
+                    return 'prio-lv4';
+                },
+
+                applySort(l) {
+                    if (this.sortMode === 'category') {
+                        return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a)));
+                    }
+                    if (this.sortMode === 'auto') {
+                        // 自動優先度ソート
+                        return l.sort((a, b) => this.getAutoScore(a) - this.getAutoScore(b));
+                    }
+                    // 従来の手動優先度ソート
+                    return l.sort((a, b) => this.getScore(b) - this.getScore(a));
+                },
+
                 getScore(t) { return (t.priority === 1 ? 10 : (t.priority === 0 ? 5 : 1)); },
                 getPrioLabel(t) { return t.priority === 1 ? '高' : (t.priority === 0 ? '中' : '低'); },
                 getPrioClass(t) { return t.priority === 1 ? 'p-1' : (t.priority === 0 ? 'p-4' : 'p-3'); },
+
+                formatDateShort(iso) {
+                    if (!iso) return '';
+                    const d = new Date(iso);
+                    return (d.getMonth() + 1) + '/' + d.getDate();
+                },
+                getDueDateStyle(task) {
+                    if (!task.dueDate) return '';
+                    const due = new Date(task.dueDate);
+                    const now = new Date();
+                    now.setHours(0, 0, 0, 0);
+                    if (due < now) return 'background:#fee; color:#d32f2f; border-color:#ef9a9a;';
+                    if (due.getTime() === now.getTime()) return 'background:#fff3e0; color:#e65100; border-color:#ffe0b2;';
+                    return 'background:#e3f2fd; color:#1565c0; border-color:#bbdefb;';
+                },
+
+                // 日付入力補正 (yyyyMMdd -> yyyy-MM-dd)
+                onDateBlur(field) {
+                    let val = this.editForm[field];
+                    if (!val) return;
+                    val = val.trim();
+                    if (/^\d{8}$/.test(val)) {
+                        const y = val.substring(0, 4);
+                        const m = val.substring(4, 6);
+                        const d = val.substring(6, 8);
+                        this.editForm[field] = `${y}-${m}-${d}`;
+                        return;
+                    }
+                    const date = new Date(val);
+                    if (!isNaN(date.getTime())) {
+                        const y = date.getFullYear();
+                        const m = (date.getMonth() + 1).toString().padStart(2, '0');
+                        const d = date.getDate().toString().padStart(2, '0');
+                        this.editForm[field] = `${y}-${m}-${d}`;
+                    }
+                },
+                // 入力制限 (数字と記号のみ)
+                filterDateInput(e, field) {
+                    const val = e.target.value;
+                    const filtered = val.replace(/[^0-9\-\/]/g, '');
+                    if (val !== filtered) {
+                        this.editForm[field] = filtered;
+                    }
+                },
+                // 日付妥当性チェック
+                isValidDate(val) {
+                    if (!val) return true;
+                    const isYYYYMMDD = /^\d{8}$/.test(val);
+                    const isFormatted = /^\d{4}[\-\/]\d{2}[\-\/]\d{2}$/.test(val);
+                    if (!isYYYYMMDD && !isFormatted) return false;
+                    let dStr = val;
+                    if (isYYYYMMDD) {
+                        dStr = `${val.substring(0, 4)}-${val.substring(4, 6)}-${val.substring(6, 8)}`;
+                    }
+                    const date = new Date(dStr);
+                    return !isNaN(date.getTime());
+                },
+
                 formatTime(iso) { if (!iso) return ''; const d = new Date(iso); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); }
             }
         }).mount('#app')

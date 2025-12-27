@@ -20,8 +20,16 @@ namespace TToDo
         public bool IsSnoozed { get; set; }
         public bool IsForgotten { get; set; }
         public DateTime? CompletedAt { get; set; }
+
         // ★追加: 日報で報告済みかどうかのフラグ
         public bool IsReported { get; set; }
+
+        // ★追加: 開始日と期日
+        public DateTime? StartDate { get; set; }
+        public DateTime? DueDate { get; set; }
+
+        // ★追加: 時間/工数 (0:未設定, 1:短, 2:長)
+        public int TimeMode { get; set; }
     }
 
     public class UserConfig
