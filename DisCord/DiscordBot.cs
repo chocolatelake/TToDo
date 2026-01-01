@@ -709,21 +709,23 @@ namespace TToDo
             return timeScore + dateScore;
         }
 
-        // 自動優先度ラベル
+        // 自動優先度ラベル (修正箇所)
         private string GetAutoPriorityLabel(TaskItem t)
         {
-            string timeLabel = "不明";
-            if (t.TimeMode == 1) timeLabel = "短い";
-            else if (t.TimeMode == 2) timeLabel = "長い";
+            // 時間/工数の文言修正
+            string timeLabel = "工数は不明";
+            if (t.TimeMode == 1) timeLabel = "すぐ終わる";
+            else if (t.TimeMode == 2) timeLabel = "時間かかる";
 
-            string dateLabel = "不明";
+            // 期限の文言修正
+            string dateLabel = "期限は不明";
             if (t.DueDate.HasValue)
             {
                 var due = t.DueDate.Value.Date;
                 var now = Globals.GetJstNow().Date;
                 var diff = (due - now).TotalDays;
-                if (diff <= 3) dateLabel = "近い";
-                else dateLabel = "遠い";
+                if (diff <= 3) dateLabel = "期限が近い";
+                else dateLabel = "いつかやる";
             }
             return $"【{timeLabel}・{dateLabel}】";
         }
