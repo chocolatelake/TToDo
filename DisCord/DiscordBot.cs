@@ -495,52 +495,90 @@ namespace TToDo
             return true;
         }
 
-        // --- 自動日報処理 ---
+        // --- 自動日報処理 (修正版) ---
         private async Task RunDailyClose(ulong userId)
         {
-            // まず不要なデータを削除 (前回の名残)
+            // ▼ 1. 基本情報の準備
+            UserConfig? config;
+            List<string> allKnownUserNames;
+
             lock (Globals.Lock)
             {
+                // 不要なデータの事前掃除 (自分が以前報告したフラグが残っているもの)
                 Globals.AllTasks.RemoveAll(t => t.UserId == userId && t.IsReported);
                 Globals.SaveData();
+
+                config = Globals.Configs.FirstOrDefault(x => x.UserId == userId);
+
+                // 登録済みユーザーの名前リストを作成（迷子判定に使用）
+                allKnownUserNames = Globals.Configs
+                    .Select(c => c.UserName)
+                    .Where(n => !string.IsNullOrEmpty(n))
+                    .Distinct()
+                    .ToList();
             }
 
-            var now = Globals.GetJstNow();
-
-            UserConfig? config;
-            lock (Globals.Lock) { config = Globals.Configs.FirstOrDefault(x => x.UserId == userId); }
-
-            string targetUserName = "";
-            if (config != null) targetUserName = config.UserName;
-            else
+            // ターゲットユーザー名の特定
+            string targetUserName = config?.UserName ?? "";
+            if (string.IsNullOrEmpty(targetUserName))
             {
                 var u = _client.GetUser(userId);
                 if (u != null) targetUserName = u.Username;
             }
-
             if (string.IsNullOrEmpty(targetUserName)) return;
 
-            // 修正: 完了済み未報告タスクを全て取得 (過去分も含む)
-            List<TaskItem> reportTasks;
+            // 念のため、現在処理中のユーザー名も既知リストに追加
+            if (!allKnownUserNames.Contains(targetUserName)) allKnownUserNames.Add(targetUserName);
+
+
+            // ▼ 2. タスクの振り分けと収集
+            // 「自分のタスク(Assignee一致)」と「誰のものでもないタスク(Assignee不明)」をリストアップ
+            List<TaskItem> myTasks = new List<TaskItem>();
+            List<TaskItem> orphanTasks = new List<TaskItem>();
+
             lock (Globals.Lock)
             {
-                reportTasks = Globals.AllTasks
-                    .Where(t => t.Assignee == targetUserName && t.CompletedAt != null && !t.IsReported)
+                // 完了していて、まだ報告されていないタスクを全走査
+                var completedTasks = Globals.AllTasks
+                    .Where(t => t.CompletedAt != null && !t.IsReported)
                     .ToList();
+
+                foreach (var t in completedTasks)
+                {
+                    // A. 自分のタスク判定
+                    // 指示通り、Assignee（担当者）のみを見て判定する
+                    if (t.Assignee == targetUserName)
+                    {
+                        myTasks.Add(t);
+                        continue;
+                    }
+
+                    // B. 迷子判定
+                    // 担当者名が入っているが、それが既知のユーザーリストに存在しない場合
+                    // または、担当者が空欄の場合
+                    bool isKnownUser = allKnownUserNames.Contains(t.Assignee);
+
+                    if (!isKnownUser)
+                    {
+                        orphanTasks.Add(t);
+                    }
+                    // ※ 既知の他ユーザー(User B)のタスクだった場合は何もしない（User Bの処理時に回収されるため）
+                }
             }
 
-            // 日報送信
-            if (reportTasks.Count > 0)
+
+            // ▼ 3. 自分の日報送信
+            if (myTasks.Count > 0)
             {
-                foreach (var group in reportTasks.GroupBy(t => t.ChannelId))
+                // 3-1. 元のチャンネルへ報告
+                foreach (var group in myTasks.GroupBy(t => t.ChannelId))
                 {
                     try
                     {
-                        ulong chId = group.Key;
-                        var targetChannel = _client.GetChannel(chId) as ISocketMessageChannel;
-                        if (targetChannel == null) try { targetChannel = await _client.GetChannelAsync(chId) as ISocketMessageChannel; } catch { }
+                        var ch = _client.GetChannel(group.Key) as ISocketMessageChannel;
+                        if (ch == null) ch = await _client.GetChannelAsync(group.Key) as ISocketMessageChannel;
 
-                        if (targetChannel != null)
+                        if (ch != null)
                         {
                             var sb = new StringBuilder();
                             sb.AppendLine($"🌅 **Daily Report: {targetUserName}** ({Globals.GetJstNow():yyyy/MM/dd})");
@@ -548,39 +586,65 @@ namespace TToDo
                             sb.AppendLine("```");
                             foreach (var t in group) sb.AppendLine($"・[{t.CompletedAt:MM/dd HH:mm}] {t.Content}");
                             sb.AppendLine("```");
-                            await targetChannel.SendMessageAsync(sb.ToString());
+                            await ch.SendMessageAsync(sb.ToString());
                         }
                     }
-                    catch { }
+                    catch { /* チャンネルが見つからない等は無視 */ }
+                }
+
+                // 3-2. 指定チャンネルへ一括送信 (設定がある場合)
+                if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
+                {
+                    var reportReq = new ReportRequest
+                    {
+                        TargetUser = targetUserName,
+                        TargetGuild = config.TargetGuild,
+                        TargetChannel = config.TargetChannel,
+                        TargetRange = "today" // 簡易的にtoday固定
+                    };
+                    await SendManualReport(reportReq);
+                }
+
+                // 3-3. 自分のタスクを削除
+                lock (Globals.Lock)
+                {
+                    foreach (var t in myTasks) Globals.AllTasks.Remove(t);
+                    Globals.SaveData();
                 }
             }
 
-            // 一括送信 (設定がある場合)
-            if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
-            {
-                string range = "today";
-                if (now.Hour == 0 && now.Minute < 5) range = "yesterday";
 
-                var reportReq = new ReportRequest
+            // ▼ 4. 迷子タスクの救済送信 (デフォルトチャンネルへ)
+            // 担当者不明のタスクがあれば、強制的に「Discordの方が便利かも / ttodo」へ送って消す
+            if (orphanTasks.Count > 0)
+            {
+                string defaultGuildName = "Discordの方が便利かも";
+                string defaultChannelName = "ttodo";
+                ulong? defaultChId = ResolveChannelId(defaultGuildName, defaultChannelName);
+
+                if (defaultChId.HasValue)
                 {
-                    TargetUser = targetUserName,
-                    TargetGuild = config.TargetGuild,
-                    TargetChannel = config.TargetChannel,
-                    TargetRange = range
-                };
+                    var ch = _client.GetChannel(defaultChId.Value) as ISocketMessageChannel;
+                    if (ch != null)
+                    {
+                        var sb = new StringBuilder();
+                        sb.AppendLine($"🧹 **Orphan Tasks Report** (担当者不明タスクの回収)");
+                        sb.AppendLine($"**{orphanTasks.Count}件** のタスクを回収・削除しました。");
+                        sb.AppendLine("```");
+                        foreach (var t in orphanTasks)
+                        {
+                            string assigneeInfo = string.IsNullOrEmpty(t.Assignee) ? "None" : t.Assignee;
+                            sb.AppendLine($"・[{t.CompletedAt:MM/dd}] {t.Content} (担当: {assigneeInfo})");
+                        }
+                        sb.AppendLine("```");
+                        await ch.SendMessageAsync(sb.ToString());
+                    }
+                }
 
-                await SendManualReport(reportReq);
-            }
-
-            // 修正: 報告対象となったタスクを即時削除
-            if (reportTasks.Count > 0)
-            {
+                // 4-1. 迷子タスクを削除
                 lock (Globals.Lock)
                 {
-                    foreach (var t in reportTasks)
-                    {
-                        Globals.AllTasks.Remove(t);
-                    }
+                    foreach (var t in orphanTasks) Globals.AllTasks.Remove(t);
                     Globals.SaveData();
                 }
             }
