@@ -260,7 +260,7 @@ namespace TToDo
                 else if (type == "full") { }
                 else query = query.Where(t => t.CompletedAt == null && !t.IsForgotten);
 
-                // 自動優先度スコア順にソート
+                // 自動優先度スコア順にソート (ここで修正後のGetAutoScoreが呼ばれる)
                 visibleTasks = query.OrderBy(t => GetAutoScore(t)).ToList();
             }
 
@@ -276,11 +276,13 @@ namespace TToDo
             sb.AppendLine($"🌍 {Globals.PublicUrl}");
 
             // 4階層構造: 自動判定ラベル > タグ > 手動優先度 > タスク
+            // GetAutoPriorityLabelが返す「【工数】\n【期限】」の文字列でグループ化
             var autoPrioGroups = visibleTasks.GroupBy(t => GetAutoPriorityLabel(t));
 
             foreach (var autoGroup in autoPrioGroups)
             {
                 // 自動判定ラベル (見出し)
+                // 改行が含まれているため、2行のヘッダーとして表示される
                 sb.AppendLine($"\n**{autoGroup.Key}**");
 
                 var tagGroups = autoGroup.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "📂 未分類").OrderBy(g => g.Key);
@@ -315,7 +317,7 @@ namespace TToDo
             foreach (var task in visibleTasks)
             {
                 if (count >= 25) break;
-                string autoLabel = GetAutoPriorityLabel(task).Replace("【", "").Replace("】", "");
+                string autoLabel = GetAutoPriorityLabel(task).Replace("【", "").Replace("】", "").Replace("\n", " ");
                 string contentLabel = task.Content.Replace("\n", " ");
                 if (contentLabel.Length > 45) contentLabel = contentLabel.Substring(0, 42) + "...";
 
@@ -498,19 +500,14 @@ namespace TToDo
         // --- 自動日報処理 (修正版) ---
         private async Task RunDailyClose(ulong userId)
         {
-            // ▼ 1. 基本情報の準備
             UserConfig? config;
             List<string> allKnownUserNames;
 
             lock (Globals.Lock)
             {
-                // 不要なデータの事前掃除 (自分が以前報告したフラグが残っているもの)
                 Globals.AllTasks.RemoveAll(t => t.UserId == userId && t.IsReported);
                 Globals.SaveData();
-
                 config = Globals.Configs.FirstOrDefault(x => x.UserId == userId);
-
-                // 登録済みユーザーの名前リストを作成（迷子判定に使用）
                 allKnownUserNames = Globals.Configs
                     .Select(c => c.UserName)
                     .Where(n => !string.IsNullOrEmpty(n))
@@ -518,7 +515,6 @@ namespace TToDo
                     .ToList();
             }
 
-            // ターゲットユーザー名の特定
             string targetUserName = config?.UserName ?? "";
             if (string.IsNullOrEmpty(targetUserName))
             {
@@ -526,51 +522,34 @@ namespace TToDo
                 if (u != null) targetUserName = u.Username;
             }
             if (string.IsNullOrEmpty(targetUserName)) return;
-
-            // 念のため、現在処理中のユーザー名も既知リストに追加
             if (!allKnownUserNames.Contains(targetUserName)) allKnownUserNames.Add(targetUserName);
 
-
-            // ▼ 2. タスクの振り分けと収集
-            // 「自分のタスク(Assignee一致)」と「誰のものでもないタスク(Assignee不明)」をリストアップ
             List<TaskItem> myTasks = new List<TaskItem>();
             List<TaskItem> orphanTasks = new List<TaskItem>();
 
             lock (Globals.Lock)
             {
-                // 完了していて、まだ報告されていないタスクを全走査
                 var completedTasks = Globals.AllTasks
                     .Where(t => t.CompletedAt != null && !t.IsReported)
                     .ToList();
 
                 foreach (var t in completedTasks)
                 {
-                    // A. 自分のタスク判定
-                    // 指示通り、Assignee（担当者）のみを見て判定する
                     if (t.Assignee == targetUserName)
                     {
                         myTasks.Add(t);
                         continue;
                     }
-
-                    // B. 迷子判定
-                    // 担当者名が入っているが、それが既知のユーザーリストに存在しない場合
-                    // または、担当者が空欄の場合
                     bool isKnownUser = allKnownUserNames.Contains(t.Assignee);
-
                     if (!isKnownUser)
                     {
                         orphanTasks.Add(t);
                     }
-                    // ※ 既知の他ユーザー(User B)のタスクだった場合は何もしない（User Bの処理時に回収されるため）
                 }
             }
 
-
-            // ▼ 3. 自分の日報送信
             if (myTasks.Count > 0)
             {
-                // 3-1. 元のチャンネルへ報告
                 foreach (var group in myTasks.GroupBy(t => t.ChannelId))
                 {
                     try
@@ -589,10 +568,9 @@ namespace TToDo
                             await ch.SendMessageAsync(sb.ToString());
                         }
                     }
-                    catch { /* チャンネルが見つからない等は無視 */ }
+                    catch { }
                 }
 
-                // 3-2. 指定チャンネルへ一括送信 (設定がある場合)
                 if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
                 {
                     var reportReq = new ReportRequest
@@ -600,12 +578,11 @@ namespace TToDo
                         TargetUser = targetUserName,
                         TargetGuild = config.TargetGuild,
                         TargetChannel = config.TargetChannel,
-                        TargetRange = "today" // 簡易的にtoday固定
+                        TargetRange = "today"
                     };
                     await SendManualReport(reportReq);
                 }
 
-                // 3-3. 自分のタスクを削除
                 lock (Globals.Lock)
                 {
                     foreach (var t in myTasks) Globals.AllTasks.Remove(t);
@@ -613,9 +590,6 @@ namespace TToDo
                 }
             }
 
-
-            // ▼ 4. 迷子タスクの救済送信 (デフォルトチャンネルへ)
-            // 担当者不明のタスクがあれば、強制的に「Discordの方が便利かも / ttodo」へ送って消す
             if (orphanTasks.Count > 0)
             {
                 string defaultGuildName = "Discordの方が便利かも";
@@ -641,7 +615,6 @@ namespace TToDo
                     }
                 }
 
-                // 4-1. 迷子タスクを削除
                 lock (Globals.Lock)
                 {
                     foreach (var t in orphanTasks) Globals.AllTasks.Remove(t);
@@ -660,13 +633,11 @@ namespace TToDo
                     if (now.Second == 0)
                     {
                         string curTime = now.ToString("HH:mm");
-
                         List<ulong> targetUserIds;
                         lock (Globals.Lock)
                         {
                             targetUserIds = Globals.Configs.Select(c => c.UserId).Distinct().ToList();
                         }
-
                         foreach (var uid in targetUserIds)
                         {
                             string targetTime = "00:00";
@@ -675,7 +646,6 @@ namespace TToDo
                                 var c = Globals.Configs.FirstOrDefault(x => x.UserId == uid);
                                 if (c != null) targetTime = c.ReportTime;
                             }
-
                             if (targetTime == curTime)
                             {
                                 await RunDailyClose(uid);
@@ -689,45 +659,80 @@ namespace TToDo
             }
         }
 
+        // ---------------------------------------------------------------------
+        // ここから修正したロジック (GetAutoScore, GetAutoPriorityLabel)
+        // ---------------------------------------------------------------------
+
         // 自動優先度計算
+        // 第1基準：期限（過ぎてる > 今日 > あと2日 > あと3日 > 近い > 遠い > 未定）
+        // 第2基準：工数（すぐ終わる > 時間かかる > 不明）
         private int GetAutoScore(TaskItem t)
         {
-            int timeScore = 300;
-            if (t.TimeMode == 1) timeScore = 100;
-            else if (t.TimeMode == 2) timeScore = 200;
-
-            int dateScore = 30;
-            if (t.DueDate.HasValue)
+            // --- 1. 期限スコア (10点刻み) ---
+            int dateScore;
+            if (!t.DueDate.HasValue)
             {
-                var due = t.DueDate.Value.Date;
-                var now = Globals.GetJstNow().Date;
-                var diff = (due - now).TotalDays;
-
-                if (diff <= 3) dateScore = 10;
-                else dateScore = 20;
+                dateScore = 90; // 期限なしは一番最後
             }
-            return timeScore + dateScore;
+            else
+            {
+                var today = Globals.GetJstNow().Date;
+                var due = t.DueDate.Value.Date;
+                var diff = (int)(due - today).TotalDays;
+
+                if (diff < 0) dateScore = 0;        // 期日過ぎたよ
+                else if (diff == 0) dateScore = 10; // 今日中（1日目）
+                else if (diff == 1) dateScore = 30; // あと 2 日（2日目）※「あと1日」は「今日」と同義なのでスキップ
+                else if (diff == 2) dateScore = 40; // あと 3 日（3日目）
+                else if (diff <= 6) dateScore = 50; // 期日が近い（4～7日後）
+                else dateScore = 60;                // 期日が遠い（8日後～）
+            }
+
+            // --- 2. 工数スコア (1点刻み) ---
+            int timeScore;
+            if (t.TimeMode == 1) timeScore = 1;      // すぐ終わる
+            else if (t.TimeMode == 2) timeScore = 2; // 時間かかる
+            else timeScore = 3;                      // 工数は不明
+
+            // 期限スコアをベースに工数で微調整
+            return (dateScore * 10) + timeScore;
         }
 
-        // 自動優先度ラベル (修正箇所)
+        // 自動優先度ラベル
+        // 形式:
+        // 【工数】
+        // 【期限】
         private string GetAutoPriorityLabel(TaskItem t)
         {
-            // 時間/工数の文言修正
-            string timeLabel = "工数は不明";
-            if (t.TimeMode == 1) timeLabel = "すぐ終わる";
-            else if (t.TimeMode == 2) timeLabel = "時間かかる";
-
-            // 期限の文言修正
-            string dateLabel = "期限は不明";
-            if (t.DueDate.HasValue)
+            // 工数ラベル
+            string timeLabel = t.TimeMode switch
             {
-                var due = t.DueDate.Value.Date;
-                var now = Globals.GetJstNow().Date;
-                var diff = (due - now).TotalDays;
-                if (diff <= 3) dateLabel = "期限が近い";
-                else dateLabel = "いつかやる";
+                1 => "すぐ終わる",
+                2 => "時間かかる",
+                _ => "工数は不明"
+            };
+
+            // 期限ラベル
+            string dateLabel;
+            if (!t.DueDate.HasValue)
+            {
+                dateLabel = "いつかやる";
             }
-            return $"【{timeLabel}・{dateLabel}】";
+            else
+            {
+                var today = Globals.GetJstNow().Date;
+                var due = t.DueDate.Value.Date;
+                var diff = (int)(due - today).TotalDays;
+
+                if (diff < 0) dateLabel = "期日過ぎたよ";
+                else if (diff == 0) dateLabel = "今日中";
+                else if (diff == 1) dateLabel = "あと 2 日";
+                else if (diff == 2) dateLabel = "あと 3 日";
+                else if (diff <= 6) dateLabel = "期日が近い";
+                else dateLabel = "期日が遠い";
+            }
+
+            return $"【{timeLabel}】\n【{dateLabel}】";
         }
 
         private int GetSortScore(TaskItem t)
