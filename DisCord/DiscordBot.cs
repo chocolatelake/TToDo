@@ -230,9 +230,9 @@ namespace TToDo
                             Priority = prio,
                             Difficulty = 0,
                             Tags = new List<string>(currentTags),
-                            // デフォルト日付: 今日 ～ 1週間後
+                            // ★デフォルト日付: 今日 ～ 1か月後
                             StartDate = Globals.GetJstNow().Date,
-                            DueDate = Globals.GetJstNow().Date.AddDays(7),
+                            DueDate = Globals.GetJstNow().Date.AddMonths(1),
                             TimeMode = 0 // 不明
                         };
                     }
@@ -260,7 +260,7 @@ namespace TToDo
                 else if (type == "full") { }
                 else query = query.Where(t => t.CompletedAt == null && !t.IsForgotten);
 
-                // 自動優先度スコア順にソート (ここで修正後のGetAutoScoreが呼ばれる)
+                // 自動優先度スコア順にソート
                 visibleTasks = query.OrderBy(t => GetAutoScore(t)).ToList();
             }
 
@@ -275,26 +275,22 @@ namespace TToDo
             sb.AppendLine($"📂 **タスク一覧{titleSuffix} ({visibleTasks.Count}件):**");
             sb.AppendLine($"🌍 {Globals.PublicUrl}");
 
-            // 4階層構造: 自動判定ラベル > タグ > 手動優先度 > タスク
-            // GetAutoPriorityLabelが返す「【工数】\n【期限】」の文字列でグループ化
+            // 自動判定ラベル > タグ > 手動優先度 > タスク
             var autoPrioGroups = visibleTasks.GroupBy(t => GetAutoPriorityLabel(t));
 
             foreach (var autoGroup in autoPrioGroups)
             {
                 // 自動判定ラベル (見出し)
-                // 改行が含まれているため、2行のヘッダーとして表示される
                 sb.AppendLine($"\n**{autoGroup.Key}**");
 
                 var tagGroups = autoGroup.GroupBy(t => t.Tags.Count > 0 ? t.Tags[0] : "📂 未分類").OrderBy(g => g.Key);
                 foreach (var tagGroup in tagGroups)
                 {
-                    // タグ (見出し・太字)
+                    // タグ (見出し)
                     sb.AppendLine($"**{tagGroup.Key}**");
 
-                    // 手動優先度で並べ替え
                     foreach (var task in tagGroup.OrderByDescending(t => t.Priority))
                     {
-                        // 優先度バッジ
                         string pLabel = GetPriorityLabel(task.Priority);
                         string pBadge = string.IsNullOrEmpty(pLabel) ? "" : $"[{pLabel}] ";
 
@@ -303,7 +299,6 @@ namespace TToDo
                         if (display.Length > 25) display = display.Substring(0, 25) + "...";
                         if (task.CompletedAt != null && type != "done") display = $"~~{display}~~";
 
-                        // インデントなしのテキスト形式
                         sb.AppendLine($"{pBadge}{state}{display}");
                     }
                 }
@@ -400,13 +395,13 @@ namespace TToDo
             {
                 start = today.AddDays(-1);
                 end = today;
-                label = "Yesterday";
+                label = "昨日";
             }
             else
             {
                 start = today;
                 end = today.AddDays(1);
-                label = "Today";
+                label = "本日";
             }
 
             List<TaskItem> l;
@@ -423,7 +418,7 @@ namespace TToDo
             if (l.Count == 0) { await c.SendMessageAsync($"📭 {label}の完了タスクはありません。"); return; }
 
             var sb = new StringBuilder();
-            sb.AppendLine($"📊 **Task Report: {u.Username}** ({label})");
+            sb.AppendLine($"📊 **日報: {u.Username}** ({label})");
             sb.AppendLine($"**{l.Count}件** 完了！");
             sb.AppendLine("```text");
             foreach (var t in l) sb.AppendLine($"・[{t.CompletedAt:HH:mm}] {t.Content}");
@@ -431,6 +426,7 @@ namespace TToDo
             await c.SendMessageAsync(sb.ToString());
         }
 
+        // --- 全体日報送信 (日本語タイトル + 絵文字アイコン) ---
         public async Task<bool> SendManualReport(ReportRequest req)
         {
             var targetChannelId = ResolveChannelId(req.TargetGuild, req.TargetChannel);
@@ -478,13 +474,13 @@ namespace TToDo
 
             if (completedTasks.Count == 0)
             {
-                await channel.SendMessageAsync($"📭 **Daily Report: {req.TargetUser}**{sourceInfo}\n{dateLabel} の完了タスクはありません。");
+                await channel.SendMessageAsync($"📭 **全体日報: {req.TargetUser}**{sourceInfo}\n{dateLabel} の完了タスクはありません。");
                 return true;
             }
 
             var sb = new StringBuilder();
-            sb.AppendLine($"📊 **Daily Report: {req.TargetUser}**{sourceInfo}");
-            sb.AppendLine($"📅 {dateLabel}");
+            sb.AppendLine($"🌅 **全体日報: {req.TargetUser}**{sourceInfo}");
+            sb.AppendLine($"{dateLabel}");
             sb.AppendLine($"{periodName} **{completedTasks.Count}件** のタスクを完了しました！");
             sb.AppendLine("```");
             foreach (var t in completedTasks)
@@ -497,7 +493,7 @@ namespace TToDo
             return true;
         }
 
-        // --- 自動日報処理 (修正版) ---
+        // --- 自動日報処理 (日本語タイトル + 絵文字アイコン) ---
         private async Task RunDailyClose(ulong userId)
         {
             UserConfig? config;
@@ -550,6 +546,7 @@ namespace TToDo
 
             if (myTasks.Count > 0)
             {
+                // 元のチャンネルへの報告 (チャンネル別日報)
                 foreach (var group in myTasks.GroupBy(t => t.ChannelId))
                 {
                     try
@@ -560,7 +557,7 @@ namespace TToDo
                         if (ch != null)
                         {
                             var sb = new StringBuilder();
-                            sb.AppendLine($"🌅 **Daily Report: {targetUserName}** ({Globals.GetJstNow():yyyy/MM/dd})");
+                            sb.AppendLine($"📺 **チャンネル別日報: {targetUserName}** ({Globals.GetJstNow():yyyy/MM/dd})");
                             sb.AppendLine($"**{group.Count()}件** 完了！");
                             sb.AppendLine("```");
                             foreach (var t in group) sb.AppendLine($"・[{t.CompletedAt:MM/dd HH:mm}] {t.Content}");
@@ -571,6 +568,7 @@ namespace TToDo
                     catch { }
                 }
 
+                // 指定チャンネルへの報告 (全体日報)
                 if (config != null && !string.IsNullOrEmpty(config.TargetGuild) && !string.IsNullOrEmpty(config.TargetChannel))
                 {
                     var reportReq = new ReportRequest
@@ -602,7 +600,7 @@ namespace TToDo
                     if (ch != null)
                     {
                         var sb = new StringBuilder();
-                        sb.AppendLine($"🧹 **Orphan Tasks Report** (担当者不明タスクの回収)");
+                        sb.AppendLine($"🧹 **担当者不明タスクの回収**");
                         sb.AppendLine($"**{orphanTasks.Count}件** のタスクを回収・削除しました。");
                         sb.AppendLine("```");
                         foreach (var t in orphanTasks)
@@ -659,20 +657,13 @@ namespace TToDo
             }
         }
 
-        // ---------------------------------------------------------------------
-        // ここから修正したロジック (GetAutoScore, GetAutoPriorityLabel)
-        // ---------------------------------------------------------------------
-
         // 自動優先度計算
-        // 第1基準：期限（過ぎてる > 今日 > あと2日 > あと3日 > 近い > 遠い > 未定）
-        // 第2基準：工数（すぐ終わる > 時間かかる > 不明）
         private int GetAutoScore(TaskItem t)
         {
-            // --- 1. 期限スコア (10点刻み) ---
             int dateScore;
             if (!t.DueDate.HasValue)
             {
-                dateScore = 90; // 期限なしは一番最後
+                dateScore = 90;
             }
             else
             {
@@ -680,31 +671,25 @@ namespace TToDo
                 var due = t.DueDate.Value.Date;
                 var diff = (int)(due - today).TotalDays;
 
-                if (diff < 0) dateScore = 0;        // 期日過ぎたよ
-                else if (diff == 0) dateScore = 10; // 今日中（1日目）
-                else if (diff == 1) dateScore = 30; // あと 2 日（2日目）※「あと1日」は「今日」と同義なのでスキップ
-                else if (diff == 2) dateScore = 40; // あと 3 日（3日目）
-                else if (diff <= 6) dateScore = 50; // 期日が近い（4～7日後）
-                else dateScore = 60;                // 期日が遠い（8日後～）
+                if (diff < 0) dateScore = 0;
+                else if (diff == 0) dateScore = 10; // 今日中(1日目)
+                else if (diff == 1) dateScore = 30; // あと2日(2日目)
+                else if (diff == 2) dateScore = 40; // あと3日(3日目)
+                else if (diff <= 6) dateScore = 50; // 期日が近い
+                else dateScore = 60;                // 期日が遠い
             }
 
-            // --- 2. 工数スコア (1点刻み) ---
             int timeScore;
-            if (t.TimeMode == 1) timeScore = 1;      // すぐ終わる
-            else if (t.TimeMode == 2) timeScore = 2; // 時間かかる
-            else timeScore = 3;                      // 工数は不明
+            if (t.TimeMode == 1) timeScore = 1;
+            else if (t.TimeMode == 2) timeScore = 2;
+            else timeScore = 3;
 
-            // 期限スコアをベースに工数で微調整
             return (dateScore * 10) + timeScore;
         }
 
         // 自動優先度ラベル
-        // 形式:
-        // 【工数】
-        // 【期限】
         private string GetAutoPriorityLabel(TaskItem t)
         {
-            // 工数ラベル
             string timeLabel = t.TimeMode switch
             {
                 1 => "すぐ終わる",
@@ -712,7 +697,6 @@ namespace TToDo
                 _ => "工数は不明"
             };
 
-            // 期限ラベル
             string dateLabel;
             if (!t.DueDate.HasValue)
             {
