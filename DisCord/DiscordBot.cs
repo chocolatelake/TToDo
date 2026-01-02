@@ -663,7 +663,7 @@ namespace TToDo
             int dateScore;
             if (!t.DueDate.HasValue)
             {
-                dateScore = 90;
+                dateScore = 90; // いつかやる
             }
             else
             {
@@ -671,20 +671,32 @@ namespace TToDo
                 var due = t.DueDate.Value.Date;
                 var diff = (int)(due - today).TotalDays;
 
-                if (diff < 0) dateScore = 0;
-                else if (diff == 0) dateScore = 10; // 今日中(1日目)
-                else if (diff == 1) dateScore = 30; // あと2日(2日目)
-                else if (diff == 2) dateScore = 40; // あと3日(3日目)
+                if (diff < 0) dateScore = 0;        // 期日過ぎたよ
+                else if (diff == 0) dateScore = 10; // 今日中
+                else if (diff == 1) dateScore = 30; // あと2日
+                else if (diff == 2) dateScore = 40; // あと3日
                 else if (diff <= 6) dateScore = 50; // 期日が近い
                 else dateScore = 60;                // 期日が遠い
             }
 
             int timeScore;
-            if (t.TimeMode == 1) timeScore = 1;
-            else if (t.TimeMode == 2) timeScore = 2;
-            else timeScore = 3;
+            if (t.TimeMode == 1) timeScore = 1;      // すぐ終わる
+            else if (t.TimeMode == 2) timeScore = 2; // 時間かかる
+            else timeScore = 3;                      // 工数は不明
 
-            return (dateScore * 10) + timeScore;
+            // ★修正: 期日が「あと3日 (dateScore 40)」以内の場合は日付優先、
+            // それより先（期日が近い・遠い・いつか）は工数（時間）優先にする
+            if (dateScore <= 40)
+            {
+                // 日付スコアを大きく重み付け (日付 > 工数)
+                return (dateScore * 10) + timeScore;
+            }
+            else
+            {
+                // 工数スコアを大きく重み付け (工数 > 日付)
+                // ベーススコア 1000 を足して、緊急タスクより後ろに来るようにする
+                return 1000 + (timeScore * 100) + dateScore;
+            }
         }
 
         // 自動優先度ラベル
