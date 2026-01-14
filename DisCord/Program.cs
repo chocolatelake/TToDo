@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using System.IO;
+using System.Linq; // 追加
 using TToDo;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,5 +52,24 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthorization();
 app.MapRazorPages();
+
+// --- ★ここから追加: Web APIのエンドポイント ---
+
+// タスク一覧取得 (GET /api/tasks)
+app.MapGet("/api/tasks", () =>
+{
+    lock (Globals.Lock)
+    {
+        // 完了していない、かつアーカイブされていないタスクを返す
+        var tasks = Globals.AllTasks
+            .Where(t => t.CompletedAt == null && !t.IsForgotten)
+            .OrderByDescending(t => t.Priority)
+            .ToList();
+        return tasks;
+    }
+});
+
+// タスク更新などのAPIが必要であればここに追加...
+// -------------------------------------------
 
 app.Run();
