@@ -1,0 +1,18 @@
+
+z r o k
+Registration completed!
+Your account was created successfully!
+
+Your new account token is: KIToPIyEMQqy 
+
+You can create an environment using your account token, like this:
+
+$ zrok enable KIToPIyEMQqy 
+
+Your account token is a secret (like a password). Please do not share it with anyone!
+
+You can use your new password to log into the console here:
+
+https://api.zrok.io
+
+Enjoy zrok!

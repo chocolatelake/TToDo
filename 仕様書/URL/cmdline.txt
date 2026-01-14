@@ -1,0 +1,39 @@
+chocolatecakelake@chocolatecakelakenoMac-mini TToDo % brew tap openziti/zrok
+brew install zrok
+✔︎ JSON API formula.jws.json                                                                                      Downloaded   32.0MB/ 32.0MB
+✔︎ JSON API cask.jws.json                                                                                         Downloaded   15.3MB/ 15.3MB
+==> Tapping openziti/zrok
+Cloning into '/opt/homebrew/Library/Taps/openziti/homebrew-zrok'...
+remote: Repository not found.
+fatal: repository 'https://github.com/openziti/homebrew-zrok/' not found
+Error: Failure while executing; `git clone https://github.com/openziti/homebrew-zrok /opt/homebrew/Library/Taps/openziti/homebrew-zrok --origin=origin --template= --config core.fsmonitor=false` exited with 128.
+==> Fetching downloads for: zrok
+✔︎ Bottle Manifest zrok (1.1.10)                                                                                  Downloaded    7.6KB/  7.6KB
+✔︎ Bottle zrok (1.1.10)                                                                                           Downloaded   29.2MB/ 29.2MB
+==> Pouring zrok--1.1.10.arm64_sequoia.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/zrok/1.1.10: 7 files, 86.9MB
+==> Running `brew cleanup zrok`...
+Disable this behaviour by setting `HOMEBREW_NO_INSTALL_CLEANUP=1`.
+Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+chocolatecakelake@chocolatecakelakenoMac-mini TToDo % zrok invite
+
+enter and confirm your email address...
+
+> zettainaisho@gmail.com 
+> zettainaisho@gmail.com 
+
+
+[_Submit_]
+
+invitation sent to 'zettainaisho@gmail.com'!
+
+*** be sure to check your SPAM folder if you do not receive the invitation email!
+
+chocolatecakelake@chocolatecakelakenoMac-mini TToDo % $ zrok enable KIToPIyEMQqy 
+zsh: command not found: $
+chocolatecakelake@chocolatecakelakenoMac-mini TToDo % zrok enable KIToPIyEMQqy 
+⣾  the zrok environment was successfully enabled...
+chocolatecakelake@chocolatecakelakenoMac-mini TToDo % zrok reserve public http://localhost:5000
+[   4.422]    INFO main.(*reserveCommand).run: your reserved share token is '15eitnpjdtbr'
+[   4.422]    INFO main.(*reserveCommand).run: reserved frontend endpoint: https://15eitnpjdtbr.share.zrok.io
+chocolatecakelake@chocolatecakelakenoMac-mini TToDo % 
