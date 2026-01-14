@@ -1,0 +1,28 @@
+chocolatecakelake@chocolatecakelakenoMac-mini TToDo % # Botを起動 (ポート5000で待機)
+dotnet run --project DisCord
+zsh: unknown file attribute: ^#
+DisCord/Properties/launchSettings.json からの起動設定を使用中...
+ビルドしています...
+/Users/chocolatecakelake/Repositories/TToDo/DisCord/Program.cs(15,30): warning CS8602: null 参照の可能性があるものの逆参照です。
+info: Microsoft.AspNetCore.DataProtection.KeyManagement.XmlKeyManager[62]
+      User profile is available. Using '/Users/chocolatecakelake/.aspnet/DataProtection-Keys' as key repository; keys will not be encrypted at rest.
+info: Microsoft.AspNetCore.Mvc.Infrastructure.DefaultActionDescriptorCollectionProvider[1]
+      No action descriptors found. This may indicate an incorrectly configured application or missing application parts. To learn more, visit https://aka.ms/aspnet/mvc/app-parts
+dbug: Microsoft.Extensions.Hosting.Internal.Host[1]
+      Hosting starting
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /Users/chocolatecakelake/Repositories/TToDo/DisCord
+dbug: Microsoft.Extensions.Hosting.Internal.Host[2]
+      Hosting started
+[Bot] 22:32:56 Discord     Discord.Net v3.17.0 (API v10)
+[Bot] 22:32:57 Gateway     Connecting
+[Bot] 22:32:57 Gateway     You're using the GuildScheduledEvents gateway intent without listening to any events related to that intent, consider removing the intent from your config.
+[Bot] 22:32:57 Gateway     You're using the GuildInvites gateway intent without listening to any events related to that intent, consider removing the intent from your config.
+[Bot] 22:32:57 Gateway     Connected
+[Bot] 22:32:58 Gateway     Ready
