@@ -1,1 +1,3 @@
+cd C:\Users\zetta\source\repos\TToDo\DisCord\DisCord.csproj
+
 dotnet publish -c Release -r osx-arm64 --self-contained -o ./publish-mac
