@@ -12,7 +12,7 @@ namespace TToDo
         public static string BindUrl { get; set; } = "http://*:5000";
         public static string PublicUrl { get; set; } = "http://localhost:5000";
 
-        // ★変更: const ではなく static プロパティに変更 (初期値は相対パス)
+        // ★修正: データフォルダのパス (初期値は実行フォルダ直下だが、設定ファイルで上書きされる)
         public static string DataDirectory { get; private set; } = "TToDoData";
 
         private static string DbPath => Path.Combine(DataDirectory, "tasks.json");
@@ -36,11 +36,11 @@ namespace TToDo
             PublicUrl = config["Web:PublicUrl"] ?? $"http://localhost:{port}";
             if (PublicUrl.EndsWith("/")) PublicUrl = PublicUrl.Substring(0, PublicUrl.Length - 1);
 
-            // ★追加: 設定ファイルからDataPathを読み込む
-            var configuredPath = config["DataPath"];
-            if (!string.IsNullOrWhiteSpace(configuredPath))
+            // ★追加: 設定ファイルからDataPath（絶対パス）を読み込む
+            var configuredDataPath = config["Paths:DataPath"];
+            if (!string.IsNullOrWhiteSpace(configuredDataPath))
             {
-                DataDirectory = configuredPath;
+                DataDirectory = configuredDataPath;
             }
         }
 
@@ -48,10 +48,10 @@ namespace TToDo
         {
             lock (Lock)
             {
-                // フォルダが存在しない場合は作成
+                // ★追加: 指定されたフォルダが存在しなければ作成する
                 if (!Directory.Exists(DataDirectory))
                 {
-                    Directory.CreateDirectory(DataDirectory);
+                    try { Directory.CreateDirectory(DataDirectory); } catch { }
                 }
 
                 try { File.WriteAllText(DbPath, JsonSerializer.Serialize(AllTasks)); } catch { }
