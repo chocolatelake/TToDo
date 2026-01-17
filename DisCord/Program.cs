@@ -13,11 +13,10 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<DiscordBot>();
 builder.Services.AddHostedService<BotBackgroundService>();
 
-// --- ★修正: 設定ファイルから絶対パスを読み込んで Token.json を追加 ---
+// --- 設定ファイルから絶対パスを読み込んで Token.json を追加 ---
 var tokenPathSetting = builder.Configuration["Paths:TokenPath"];
 if (!string.IsNullOrEmpty(tokenPathSetting))
 {
-    // 設定ファイルに書かれたパス（絶対パス）をそのまま使用
     if (File.Exists(tokenPathSetting))
     {
         Console.WriteLine($"[Setup] Loading Token from: {tokenPathSetting}");
@@ -36,11 +35,9 @@ else
 
 var app = builder.Build();
 
-// Globalsの設定とデータ読み込み
 Globals.LoadConfiguration(app.Configuration);
 Globals.LoadData();
 
-// 環境に応じたトークンの上書き
 string? tokenFromFile = null;
 if (app.Environment.IsDevelopment())
 {
@@ -63,7 +60,11 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// ★ここが抜けていました！復活させます
+app.UseDefaultFiles();
 app.UseStaticFiles();
+
 app.UseRouting();
 app.UseAuthorization();
 app.MapRazorPages();
@@ -81,6 +82,6 @@ app.MapGet("/api/tasks", () =>
     }
 });
 
-// 必要なAPIがあればここに追加...
+// その他のAPIも必要な場合は記述...
 
 app.Run();
