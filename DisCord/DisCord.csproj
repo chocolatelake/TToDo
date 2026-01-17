@@ -9,11 +9,14 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Discord.Net" Version="3.17.0" />
+	  <Compile Remove="TToDoData\**" />
+	  <Content Remove="TToDoData\**" />
+	  <EmbeddedResource Remove="TToDoData\**" />
+	  <None Remove="TToDoData\**" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Folder Include="TToDoData\" />
+		<PackageReference Include="Discord.Net" Version="3.17.0" />
 	</ItemGroup>
 
 </Project>
