@@ -15,16 +15,36 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<DiscordBot>();
 builder.Services.AddHostedService<BotBackgroundService>();
 
-// Token.json のパス設定 (警告 CS8602 の修正)
-var parentDir = Directory.GetParent(builder.Environment.ContentRootPath);
+// --- ★修正: Token.json を複数の場所から探すように変更 ---
+var currentDir = builder.Environment.ContentRootPath;
+var parentDir = Directory.GetParent(currentDir)?.FullName;
+
+var possiblePaths = new List<string>
+{
+    Path.Combine(currentDir, "Token.json"), // DisCordフォルダ内
+};
 if (parentDir != null)
 {
-    var tokenPath = Path.Combine(parentDir.FullName, "Token.json");
-    if (File.Exists(tokenPath))
+    possiblePaths.Add(Path.Combine(parentDir, "Token.json")); // TToDoフォルダ(一つ上)内
+}
+
+bool tokenFileFound = false;
+foreach (var path in possiblePaths)
+{
+    if (File.Exists(path))
     {
-        builder.Configuration.AddJsonFile(tokenPath, optional: true, reloadOnChange: true);
+        Console.WriteLine($"[Setup] Found Token.json at: {path}"); // ★見つかったらログ出す
+        builder.Configuration.AddJsonFile(path, optional: true, reloadOnChange: true);
+        tokenFileFound = true;
     }
 }
+
+if (!tokenFileFound)
+{
+    Console.WriteLine("[Setup] WARNING: Token.json was NOT found in any checked locations.");
+    Console.WriteLine($"[Setup] Checked: {string.Join(", ", possiblePaths)}");
+}
+// -------------------------------------------------------
 
 var app = builder.Build();
 
@@ -43,9 +63,15 @@ else
     tokenFromFile = app.Configuration["TToDo"];
 }
 
-if (!string.IsNullOrEmpty(tokenFromFile))
+if (!string.IsNullOrEmpty(tokenFromFile) && tokenFromFile != "あなたのトークン")
 {
     Globals.BotToken = tokenFromFile;
+    Console.WriteLine("[Setup] Token loaded successfully from Token.json");
+}
+else
+{
+    Console.WriteLine("[Setup] ERROR: Token is empty or default placeholder.");
+    Console.WriteLine($"[Setup] TToDo_Dev value: {app.Configuration["TToDo_Dev"]}");
 }
 
 if (!app.Environment.IsDevelopment())
@@ -90,7 +116,6 @@ app.MapPost("/api/create", (TaskItem task) =>
     lock (Globals.Lock)
     {
         task.Id = Guid.NewGuid().ToString();
-        // Models.cs で定義した CreatedAt を使用
         task.CreatedAt = Globals.GetJstNow();
         Globals.AllTasks.Add(task);
         Globals.SaveData();
@@ -206,7 +231,7 @@ app.MapPost("/api/config", (UserConfig cfg) =>
     return Results.Ok();
 });
 
-// 10. 送信先一括変更 (Models.csのクラスを使用)
+// 10. 送信先一括変更
 app.MapPost("/api/batch/channel", (BatchChannelRequest req) =>
 {
     if (req == null) return Results.BadRequest();
