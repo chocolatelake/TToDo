@@ -21,6 +21,9 @@ namespace TToDo
         public bool IsForgotten { get; set; }
         public DateTime? CompletedAt { get; set; }
 
+        // ★追加: 作成日時 (エラー CS1061 の修正)
+        public DateTime CreatedAt { get; set; } = Globals.GetJstNow();
+
         // 日報で報告済みかどうかのフラグ
         public bool IsReported { get; set; }
 
