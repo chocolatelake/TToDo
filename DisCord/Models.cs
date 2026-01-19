@@ -18,10 +18,15 @@ namespace TToDo
         public int Difficulty { get; set; } = -1;
         public List<string> Tags { get; set; } = new List<string>();
         public bool IsSnoozed { get; set; }
+
+        // アーカイブ済みフラグ
         public bool IsForgotten { get; set; }
+
+        // ★追加: アーカイブされた日時（自動削除の判定に使用）
+        public DateTime? ArchivedAt { get; set; }
+
         public DateTime? CompletedAt { get; set; }
 
-        // ★追加: 作成日時 (エラー CS1061 の修正)
         public DateTime CreatedAt { get; set; } = Globals.GetJstNow();
 
         // 日報で報告済みかどうかのフラグ

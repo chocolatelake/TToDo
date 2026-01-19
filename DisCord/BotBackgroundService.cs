@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -27,7 +28,13 @@ namespace TToDo
 
                 try
                 {
+                    // 毎日0時に実行
                     await Task.Delay(delay, stoppingToken);
+
+                    // 1. 古いアーカイブの自動削除 (90日経過)
+                    CleanupOldArchives();
+
+                    // 2. バックアップ
                     BackupData();
                 }
                 catch (TaskCanceledException)
@@ -36,8 +43,35 @@ namespace TToDo
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Backup Loop Error] {ex.Message}");
+                    Console.WriteLine($"[Loop Error] {ex.Message}");
                 }
+            }
+        }
+
+        private void CleanupOldArchives()
+        {
+            try
+            {
+                lock (Globals.Lock)
+                {
+                    var now = Globals.GetJstNow();
+                    // アーカイブ済み(IsForgotten) かつ アーカイブ日時(ArchivedAt)から90日経過しているもの
+                    int removedCount = Globals.AllTasks.RemoveAll(t =>
+                        t.IsForgotten &&
+                        t.ArchivedAt.HasValue &&
+                        (now - t.ArchivedAt.Value).TotalDays >= 90
+                    );
+
+                    if (removedCount > 0)
+                    {
+                        Globals.SaveData();
+                        Console.WriteLine($"[Cleanup] {removedCount} items were auto-deleted from archive.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Cleanup Error] {ex.Message}");
             }
         }
 

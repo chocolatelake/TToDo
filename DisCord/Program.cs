@@ -15,7 +15,6 @@ builder.Services.AddRazorPages();
 builder.Services.AddSingleton<DiscordBot>();
 builder.Services.AddHostedService<BotBackgroundService>();
 
-// --- 設定ファイルの読み込み ---
 var tokenPathSetting = builder.Configuration["Paths:TokenPath"];
 if (!string.IsNullOrEmpty(tokenPathSetting) && File.Exists(tokenPathSetting))
 {
@@ -27,7 +26,6 @@ var app = builder.Build();
 Globals.LoadConfiguration(app.Configuration);
 Globals.LoadData();
 
-// --- トークンの設定 ---
 string? tokenFromFile = app.Environment.IsDevelopment() ? app.Configuration["TToDo_Dev"] : app.Configuration["TToDo"];
 if (!string.IsNullOrEmpty(tokenFromFile) && tokenFromFile != "あなたのトークン")
 {
@@ -45,7 +43,6 @@ app.MapRazorPages();
 //        完全版APIリスト
 // ==========================================
 
-// 1. タスク一覧取得
 app.MapGet("/api/tasks", () =>
 {
     lock (Globals.Lock)
@@ -54,7 +51,6 @@ app.MapGet("/api/tasks", () =>
     }
 });
 
-// 2. 設定取得（★これがLoading解除に必須！）
 app.MapGet("/api/config", () =>
 {
     lock (Globals.Lock)
@@ -63,7 +59,6 @@ app.MapGet("/api/config", () =>
     }
 });
 
-// 3. タスク作成
 app.MapPost("/api/create", (TaskItem newItem) =>
 {
     lock (Globals.Lock)
@@ -76,7 +71,6 @@ app.MapPost("/api/create", (TaskItem newItem) =>
     return Results.Ok();
 });
 
-// 4. 更新
 app.MapPost("/api/update", (TaskItem updated) =>
 {
     lock (Globals.Lock)
@@ -94,10 +88,36 @@ app.MapPost("/api/update", (TaskItem updated) =>
     return Results.Ok();
 });
 
-// 5. 完了・復元・削除などの必須API
 app.MapPost("/api/done", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = item.CompletedAt; Globals.SaveData(); } } return Results.Ok(); });
 app.MapPost("/api/restore", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = null; t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });
-app.MapPost("/api/archive", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.IsForgotten = true; Globals.SaveData(); } } return Results.Ok(); });
-app.MapPost("/api/delete", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { Globals.AllTasks.Remove(t); Globals.SaveData(); } } return Results.Ok(); });
+
+// ★修正: アーカイブ時に現在日時を入れる
+app.MapPost("/api/archive", (TaskItem item) => {
+    lock (Globals.Lock)
+    {
+        var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id);
+        if (t != null)
+        {
+            t.IsForgotten = true;
+            t.ArchivedAt = Globals.GetJstNow(); // 追加
+            Globals.SaveData();
+        }
+    }
+    return Results.Ok();
+});
+
+// ★修正: 物理削除用API（もしWebから呼ぶ場合も即消し）
+app.MapPost("/api/delete", (TaskItem item) => {
+    lock (Globals.Lock)
+    {
+        var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id);
+        if (t != null)
+        {
+            Globals.AllTasks.Remove(t);
+            Globals.SaveData();
+        }
+    }
+    return Results.Ok();
+});
 
 app.Run();
