@@ -59,10 +59,7 @@ namespace TToDo
         {
             await _client.LoginAsync(TokenType.Bot, Globals.BotToken);
             await _client.StartAsync();
-            // 起動中ステータスを表示
             await _client.SetGameAsync("!ttodo help | 起動中...");
-
-            // ★削除: AutoReportLoop() の呼び出しは削除しました（BotBackgroundService側で管理するため）
         }
 
         // --- コマンド処理 ---
@@ -243,7 +240,6 @@ namespace TToDo
             if (addedTasks.Count > 0) await ShowCompactList(channel, user, "todo");
         }
 
-        // --- 機能実装: リスト表示 ---
         private (string Text, MessageComponent? Components) BuildListView(ulong userId, ulong channelId, string type)
         {
             var user = _client.GetUser(userId);
@@ -300,10 +296,9 @@ namespace TToDo
                 }
             }
 
-            // メニュー作成 (3つ作成)
+            // メニュー作成 (「削除」を撤去し、2つのみにする)
             var doneMenu = new SelectMenuBuilder().WithCustomId("menu_quick_done").WithPlaceholder("✅ 完了にする...").WithMinValues(1).WithMaxValues(1);
             var archiveMenu = new SelectMenuBuilder().WithCustomId("menu_quick_archive").WithPlaceholder("🗑️ アーカイブする... (90日で削除)").WithMinValues(1).WithMaxValues(1);
-            var deleteMenu = new SelectMenuBuilder().WithCustomId("menu_quick_delete").WithPlaceholder("💥 完全に消す... (復元不可)").WithMinValues(1).WithMaxValues(1);
 
             int count = 0;
             bool hasItems = false;
@@ -321,7 +316,6 @@ namespace TToDo
 
                 doneMenu.AddOption(option);
                 archiveMenu.AddOption(option);
-                deleteMenu.AddOption(option);
                 count++;
                 hasItems = true;
             }
@@ -331,7 +325,6 @@ namespace TToDo
             var components = new ComponentBuilder()
                 .WithSelectMenu(doneMenu, row: 0)
                 .WithSelectMenu(archiveMenu, row: 1)
-                .WithSelectMenu(deleteMenu, row: 2) // 3段目に追加
                 .Build();
 
             return (sb.ToString(), components);
@@ -374,23 +367,7 @@ namespace TToDo
                         if (t != null)
                         {
                             t.IsForgotten = true;
-                            // ★追加: アーカイブ日時を記録
                             t.ArchivedAt = Globals.GetJstNow();
-                            Globals.SaveData();
-                        }
-                    }
-                    var view = BuildListView(component.User.Id, component.Channel.Id, "todo");
-                    await component.UpdateAsync(x => { x.Content = view.Text; x.Components = view.Components; });
-                }
-                // ★追加: 完全削除のハンドラー
-                else if (id == "menu_quick_delete")
-                {
-                    lock (Globals.Lock)
-                    {
-                        var t = Globals.AllTasks.FirstOrDefault(x => x.Id == val);
-                        if (t != null)
-                        {
-                            Globals.AllTasks.Remove(t); // リストから物理削除
                             Globals.SaveData();
                         }
                     }
@@ -509,7 +486,6 @@ namespace TToDo
             return true;
         }
 
-        // ★修正: private -> public に変更し、外部から呼べるようにしました
         public async Task RunDailyClose(ulong userId)
         {
             UserConfig? config;
@@ -634,8 +610,6 @@ namespace TToDo
                 }
             }
         }
-
-        // AutoReportLoop は削除しました
 
         private int GetAutoScore(TaskItem t)
         {

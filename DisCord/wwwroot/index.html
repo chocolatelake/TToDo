@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TToDo Kanban</title>
+    <title>TToDo Board</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
+        /* --- 既存スタイル --- */
         .edit-tag {
             background-color: var(--primary-color);
             color: white;
@@ -37,7 +38,73 @@
             margin-top: 8px;
         }
 
-        .btn-move-archive, .btn-move-active, .btn-move-done {
+        .filter-avatar {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            vertical-align: middle;
+            margin-right: 4px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .form-control.is-invalid {
+            border-color: #dc3545;
+            background-color: #fff8f8;
+        }
+
+        .error-msg {
+            color: #dc3545;
+            font-size: 0.75rem;
+            margin-top: 2px;
+            margin-left: 2px;
+        }
+
+        .auto-prio-tag {
+            font-weight: bold;
+            border: 1px solid transparent;
+        }
+
+        .prio-lv1 {
+            background: #ffebee;
+            color: #c62828;
+            border-color: #ef9a9a;
+        }
+
+        .prio-lv2 {
+            background: #e3f2fd;
+            color: #1565c0;
+            border-color: #90caf9;
+        }
+
+        .prio-lv3 {
+            background: #fff3e0;
+            color: #ef6c00;
+            border-color: #ffcc80;
+        }
+
+        .prio-lv4 {
+            background: #f5f5f5;
+            color: #616161;
+            border-color: #e0e0e0;
+        }
+
+        .archived-card {
+            opacity: 0.6;
+            background-color: #f9f9f9;
+            border: 1px dashed #ccc !important;
+        }
+
+            .archived-card .text {
+                color: #777;
+            }
+
+        /* --- ボタン類 --- */
+        .btn-action {
             width: 24px;
             height: 24px;
             border-radius: 4px;
@@ -51,22 +118,32 @@
             margin-right: 2px;
         }
 
-            .btn-move-archive:hover {
-                background: #fee;
-                color: #c00;
-                border-color: #fcc;
-            }
+        .btn-move-archive:hover {
+            background: #fee;
+            color: #c00;
+            border-color: #fcc;
+        }
 
-            .btn-move-done:hover {
-                background: #efe;
-                color: #080;
-                border-color: #cfc;
-            }
+        .btn-move-done:hover {
+            background: #efe;
+            color: #080;
+            border-color: #cfc;
+        }
 
-            .btn-move-active:hover {
-                background: #eef;
-                color: #00c;
-                border-color: #ccf;
+        .btn-move-active:hover {
+            background: #eef;
+            color: #00c;
+            border-color: #ccf;
+        }
+
+        .btn-delete {
+            margin-left: auto;
+            color: #d32f2f;
+        }
+
+            .btn-delete:hover {
+                background: #ffebee;
+                border-color: #ef9a9a;
             }
 
         .btn-export {
@@ -82,62 +159,33 @@
                 transform: scale(1.1);
             }
 
-        .filter-avatar {
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            vertical-align: middle;
-            margin-right: 4px;
-            border: 1px solid rgba(0,0,0,0.1);
+        /* --- ヘッダー開閉アニメーション --- */
+        .header-controls {
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            max-height: 100px;
+            opacity: 1;
+            overflow: hidden;
         }
 
-        .chip {
-            display: inline-flex;
-            align-items: center;
+            .header-controls.collapsed {
+                max-height: 0;
+                opacity: 0;
+                margin: 0;
+                padding: 0;
+            }
+
+        .toggle-header-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0 10px;
+            color: #666;
         }
 
-        /* エラー時のスタイル */
-        .form-control.is-invalid {
-            border-color: #dc3545;
-            background-color: #fff8f8;
-        }
-
-        .error-msg {
-            color: #dc3545;
-            font-size: 0.75rem;
-            margin-top: 2px;
-            margin-left: 2px;
-        }
-
-        /* 自動優先度ラベルのスタイル */
-        .auto-prio-tag {
-            font-weight: bold;
-            border: 1px solid transparent;
-        }
-        /* 短い・近い (最優先) */
-        .prio-lv1 {
-            background: #ffebee;
-            color: #c62828;
-            border-color: #ef9a9a;
-        }
-        /* 短い・遠い */
-        .prio-lv2 {
-            background: #e3f2fd;
-            color: #1565c0;
-            border-color: #90caf9;
-        }
-        /* 長い・近い (要注意) */
-        .prio-lv3 {
-            background: #fff3e0;
-            color: #ef6c00;
-            border-color: #ffcc80;
-        }
-        /* その他 */
-        .prio-lv4 {
-            background: #f5f5f5;
-            color: #616161;
-            border-color: #e0e0e0;
-        }
+            .toggle-header-btn:hover {
+                color: #333;
+            }
     </style>
 </head>
 <body>
@@ -145,9 +193,12 @@
         <header>
             <div class="header-left">
                 <h1>TToDo Board</h1>
+                <button class="toggle-header-btn" @click="headerExpanded = !headerExpanded" :title="headerExpanded ? 'メニューを隠す' : 'メニューを表示'">
+                    {{ headerExpanded ? '🔼' : '🔽' }}
+                </button>
             </div>
 
-            <div class="header-controls">
+            <div class="header-controls" :class="{ collapsed: !headerExpanded }">
                 <button class="btn-sort" @click="openCreateModal" style="color:var(--primary-color); border-color:var(--primary-color);">＋ 新規タスク</button>
                 <span class="divider">|</span>
                 <button class="btn-sort" @click="openReportModal">📋 日報作成</button>
@@ -166,42 +217,11 @@
         </header>
 
         <div v-if="showFilterMenu" class="filter-panel">
-            <div class="filter-section">
-                <span class="filter-title">担当者:</span>
-                <button v-for="u in uniqueUsers" :key="u" class="chip" :class="{selected: filterUsers.includes(u)}" @click="toggleFilterUser(u)">
-                    <img v-if="getAvatar(u)" :src="getAvatar(u)" class="filter-avatar">
-                    {{ u }}
-                </button>
-                <button class="chip" @click="filterUsers = []" v-if="filterUsers.length > 0">クリア</button>
-            </div>
-
-            <div class="filter-section">
-                <span class="filter-title">タグ:</span>
-                <button v-for="t in uniqueTags" :key="t" class="chip" :class="{selected: filterTags.includes(t)}" @click="toggleFilterTag(t)">
-                    {{ t === '(タグ未設定)' ? t : '#' + t }}
-                </button>
-                <button class="chip" @click="filterTags = []" v-if="filterTags.length > 0">クリア</button>
-            </div>
-
-            <div class="filter-section">
-                <span class="filter-title">優先度:</span>
-                <button class="chip" :class="{selected: filterPriorities.includes(1)}" @click="toggleFilterPriority(1)">高</button>
-                <button class="chip" :class="{selected: filterPriorities.includes(0)}" @click="toggleFilterPriority(0)">中</button>
-                <button class="chip" :class="{selected: filterPriorities.includes(-1)}" @click="toggleFilterPriority(-1)">低</button>
-                <button class="chip" @click="filterPriorities = []" v-if="filterPriorities.length > 0">クリア</button>
-            </div>
-
-            <div class="filter-section">
-                <span class="filter-title">サーバー:</span>
-                <button v-for="g in uniqueGuilds" :key="g" class="chip" :class="{selected: filterGuilds.includes(g)}" @click="toggleFilterGuild(g)">{{ g }}</button>
-                <button class="chip" @click="filterGuilds = []" v-if="filterGuilds.length > 0">クリア</button>
-            </div>
-
-            <div class="filter-section">
-                <span class="filter-title">チャンネル:</span>
-                <button v-for="c in uniqueChannels" :key="c" class="chip" :class="{selected: filterChannels.includes(c)}" @click="toggleFilterChannel(c)">{{ c }}</button>
-                <button class="chip" @click="filterChannels = []" v-if="filterChannels.length > 0">クリア</button>
-            </div>
+            <div class="filter-section"><span class="filter-title">担当者:</span><button v-for="u in uniqueUsers" :key="u" class="chip" :class="{selected: filterUsers.includes(u)}" @click="toggleFilterUser(u)"><img v-if="getAvatar(u)" :src="getAvatar(u)" class="filter-avatar">{{ u }}</button><button class="chip" @click="filterUsers = []" v-if="filterUsers.length > 0">クリア</button></div>
+            <div class="filter-section"><span class="filter-title">タグ:</span><button v-for="t in uniqueTags" :key="t" class="chip" :class="{selected: filterTags.includes(t)}" @click="toggleFilterTag(t)">{{ t === '(タグ未設定)' ? t : '#' + t }}</button><button class="chip" @click="filterTags = []" v-if="filterTags.length > 0">クリア</button></div>
+            <div class="filter-section"><span class="filter-title">優先度:</span><button class="chip" :class="{selected: filterPriorities.includes(1)}" @click="toggleFilterPriority(1)">高</button><button class="chip" :class="{selected: filterPriorities.includes(0)}" @click="toggleFilterPriority(0)">中</button><button class="chip" :class="{selected: filterPriorities.includes(-1)}" @click="toggleFilterPriority(-1)">低</button><button class="chip" @click="filterPriorities = []" v-if="filterPriorities.length > 0">クリア</button></div>
+            <div class="filter-section"><span class="filter-title">サーバー:</span><button v-for="g in uniqueGuilds" :key="g" class="chip" :class="{selected: filterGuilds.includes(g)}" @click="toggleFilterGuild(g)">{{ g }}</button><button class="chip" @click="filterGuilds = []" v-if="filterGuilds.length > 0">クリア</button></div>
+            <div class="filter-section"><span class="filter-title">チャンネル:</span><button v-for="c in uniqueChannels" :key="c" class="chip" :class="{selected: filterChannels.includes(c)}" @click="toggleFilterChannel(c)">{{ c }}</button><button class="chip" @click="filterChannels = []" v-if="filterChannels.length > 0">クリア</button></div>
         </div>
 
         <div v-if="loading" style="text-align:center">Loading...</div>
@@ -213,11 +233,12 @@
                     <button class="btn-export" @click="exportList('active')" title="このリストのみコピー">📄</button>
                 </div>
                 <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'active')">
-                    <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="getPrioClass(task)"
+                    <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="[getPrioClass(task), { 'archived-card': task.isForgotten }]"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
                             <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
                             <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
+                            <span v-if="task.isForgotten" style="font-size:0.7rem; color:#999; margin-left:auto;">(アーカイブ)</span>
                         </div>
                         <div class="task-content">
                             <div class="tags">
@@ -225,16 +246,15 @@
                                 <span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
                                 <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
                                 <span class="tag" v-if="task.startDate" style="background:#eef; color:#448;">🚀 {{ formatDateShort(task.startDate) }}～</span>
-
                                 <span class="tag auto-prio-tag" :class="getAutoPriorityClass(task)">{{ getAutoPriorityLabel(task) }}</span>
-
                                 <span class="tag" v-if="task.dueDate" :style="getDueDateStyle(task)">📅 ～{{ formatDateShort(task.dueDate) }}</span>
                             </div>
                             <div class="text">{{ task.content }}</div>
                         </div>
                         <div class="actions">
-                            <button class="btn-move-archive" @click.stop="moveToArchive(task)" title="アーカイブへ">🗑️</button>
-                            <button class="btn-icon btn-check" @click.stop="moveToDone(task)">✔</button>
+                            <button class="btn-action btn-move-done" @click.stop="moveToDone(task)" title="完了にする">✅</button>
+                            <button class="btn-action btn-move-archive" @click.stop="moveToArchive(task)" title="アーカイブへ">🗑️</button>
+                            <button class="btn-action btn-delete" @click.stop="deleteTask(task)" title="完全に削除">💥</button>
                         </div>
                     </div>
                 </div>
@@ -246,11 +266,12 @@
                     <button class="btn-export" @click="exportList('done')" title="このリストのみコピー">📄</button>
                 </div>
                 <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'done')">
-                    <div v-for="task in tasksDone" :key="task.id" class="card done-card"
+                    <div v-for="task in tasksDone" :key="task.id" class="card done-card" :class="{ 'archived-card': task.isForgotten }"
                          draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
                             <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
                             <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
+                            <span v-if="task.isForgotten" style="font-size:0.7rem; color:#999; margin-left:auto;">(アーカイブ)</span>
                         </div>
                         <div class="task-content">
                             <div class="tags">
@@ -261,8 +282,9 @@
                             <div class="text">{{ task.content }}</div>
                         </div>
                         <div class="actions">
-                            <button class="btn-move-archive" @click.stop="moveToArchive(task)" title="アーカイブへ">🗑️</button>
-                            <button class="btn-icon btn-return" @click.stop="moveToActive(task)">↩️</button>
+                            <button class="btn-action btn-move-active" @click.stop="moveToActive(task)" title="進行中に戻す">↩️</button>
+                            <button class="btn-action btn-move-archive" @click.stop="moveToArchive(task)" title="アーカイブへ">🗑️</button>
+                            <button class="btn-action btn-delete" @click.stop="deleteTask(task)" title="完全に削除">💥</button>
                         </div>
                     </div>
                 </div>
@@ -291,9 +313,9 @@
                             <div class="text">{{ task.content }}</div>
                         </div>
                         <div class="actions">
-                            <button class="btn-move-active" @click.stop="moveToActive(task)" title="進行中へ">↩️</button>
-                            <button class="btn-move-done" @click.stop="moveToDone(task)" title="完了へ">✅</button>
-                            <button class="btn-icon btn-delete" @click.stop="deleteTask(task)">💥</button>
+                            <button class="btn-action btn-move-active" @click.stop="moveToActive(task)" title="進行中へ">↩️</button>
+                            <button class="btn-action btn-move-done" @click.stop="moveToDone(task)" title="完了へ">✅</button>
+                            <button class="btn-action btn-delete" @click.stop="deleteTask(task)" title="完全に削除">💥</button>
                         </div>
                     </div>
                 </div>
@@ -304,84 +326,12 @@
             <div class="modal">
                 <h3>{{ isCreating ? '新規タスク' : 'タスク編集' }}</h3>
                 <div class="form-group"><label>内容</label><textarea class="form-control" rows="3" v-model="editForm.content"></textarea></div>
-
-                <div class="form-group">
-                    <label>担当者 (Assignee)</label>
-                    <select class="form-control" v-model="editForm.assignee">
-                        <option value="">(未設定)</option>
-                        <option v-for="name in allAssignees" :value="name">{{ name }}</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>送信先 (サーバー / チャンネル)</label>
-                    <div class="row">
-                        <select class="form-control" v-model="editForm.guildName" @change="editForm.channelName = ''"><option value="">(未設定)</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select>
-                        <select class="form-control" v-model="editForm.channelName"><option value="">(未設定)</option><option v-for="c in getChannelsForGuild(editForm.guildName)" :value="c">{{ c }}</option></select>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>タグ</label>
-                    <div style="margin-bottom: 5px;">
-                        <span v-for="tag in editForm.tags" class="tag edit-tag">
-                            #{{ tag }} <span class="remove-tag" @click="removeTag(tag)">×</span>
-                        </span>
-                    </div>
-                    <div class="tag-controls">
-                        <select class="form-control" v-model="selectedExistingTag" @change="addExistingTag" style="flex:1;">
-                            <option value="">既存タグから追加...</option>
-                            <option v-for="t in uniqueTags" :value="t" v-show="t !== '(タグ未設定)'">{{ t }}</option>
-                        </select>
-                        <input type="text" class="form-control" v-model="newTagInput" placeholder="新規タグ..." style="flex:1;" @keydown.enter.prevent="addNewTag">
-                        <button class="btn" style="background:var(--border-color); padding:0 12px;" @click="addNewTag">＋</button>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>時間 (工数)</label>
-                    <div class="chip-group">
-                        <div class="chip" :class="{selected: editForm.timeMode===1}" @click="editForm.timeMode=1">短い</div>
-                        <div class="chip" :class="{selected: editForm.timeMode===2}" @click="editForm.timeMode=2">長い</div>
-                        <div class="chip" :class="{selected: editForm.timeMode===0}" @click="editForm.timeMode=0">不明</div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>期間</label>
-                    <div class="row" style="display: flex; gap: 10px;">
-                        <div style="flex: 1;">
-                            <label style="font-size: 0.8rem; color: #666;">開始日</label>
-                            <input type="text" class="form-control"
-                                   :class="{'is-invalid': editForm.startDate && !isValidDate(editForm.startDate)}"
-                                   v-model="editForm.startDate"
-                                   @blur="onDateBlur('startDate')"
-                                   @input="filterDateInput($event, 'startDate')"
-                                   placeholder="yyyyMMdd" maxlength="10">
-                            <div v-if="editForm.startDate && !isValidDate(editForm.startDate)" class="error-msg">※無効な日付です</div>
-                        </div>
-                        <div style="flex: 1;">
-                            <label style="font-size: 0.8rem; color: #666;">期日</label>
-                            <input type="text" class="form-control"
-                                   :class="{'is-invalid': editForm.dueDate && !isValidDate(editForm.dueDate)}"
-                                   v-model="editForm.dueDate"
-                                   @blur="onDateBlur('dueDate')"
-                                   @input="filterDateInput($event, 'dueDate')"
-                                   placeholder="yyyyMMdd" maxlength="10">
-                            <div v-if="editForm.dueDate && !isValidDate(editForm.dueDate)" class="error-msg">※無効な日付です</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-group" style="opacity: 0.7;">
-                    <label style="font-size: 0.8rem;">手動マーカー (優先度)</label>
-                    <div class="chip-group">
-                        <div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">高</div>
-                        <div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">中</div>
-                        <div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">低</div>
-                    </div>
-                </div>
-
+                <div class="form-group"><label>担当者 (Assignee)</label><select class="form-control" v-model="editForm.assignee"><option value="">(未設定)</option><option v-for="name in allAssignees" :value="name">{{ name }}</option></select></div>
+                <div class="form-group"><label>送信先</label><div class="row"><select class="form-control" v-model="editForm.guildName" @change="editForm.channelName = ''"><option value="">(未設定)</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="editForm.channelName"><option value="">(未設定)</option><option v-for="c in getChannelsForGuild(editForm.guildName)" :value="c">{{ c }}</option></select></div></div>
+                <div class="form-group"><label>タグ</label><div style="margin-bottom: 5px;"><span v-for="tag in editForm.tags" class="tag edit-tag">#{{ tag }} <span class="remove-tag" @click="removeTag(tag)">×</span></span></div><div class="tag-controls"><select class="form-control" v-model="selectedExistingTag" @change="addExistingTag" style="flex:1;"><option value="">既存タグから追加...</option><option v-for="t in uniqueTags" :value="t" v-show="t !== '(タグ未設定)'">{{ t }}</option></select><input type="text" class="form-control" v-model="newTagInput" placeholder="新規タグ..." style="flex:1;" @keydown.enter.prevent="addNewTag"><button class="btn" style="background:var(--border-color); padding:0 12px;" @click="addNewTag">＋</button></div></div>
+                <div class="form-group"><label>時間 (工数)</label><div class="chip-group"><div class="chip" :class="{selected: editForm.timeMode===1}" @click="editForm.timeMode=1">短い</div><div class="chip" :class="{selected: editForm.timeMode===2}" @click="editForm.timeMode=2">長い</div><div class="chip" :class="{selected: editForm.timeMode===0}" @click="editForm.timeMode=0">不明</div></div></div>
+                <div class="form-group"><label>期間</label><div class="row" style="display: flex; gap: 10px;"><div style="flex: 1;"><label style="font-size: 0.8rem; color: #666;">開始日</label><input type="text" class="form-control" :class="{'is-invalid': editForm.startDate && !isValidDate(editForm.startDate)}" v-model="editForm.startDate" @blur="onDateBlur('startDate')" @input="filterDateInput($event, 'startDate')" placeholder="yyyyMMdd" maxlength="10"></div><div style="flex: 1;"><label style="font-size: 0.8rem; color: #666;">期日</label><input type="text" class="form-control" :class="{'is-invalid': editForm.dueDate && !isValidDate(editForm.dueDate)}" v-model="editForm.dueDate" @blur="onDateBlur('dueDate')" @input="filterDateInput($event, 'dueDate')" placeholder="yyyyMMdd" maxlength="10"></div></div></div>
+                <div class="form-group" style="opacity: 0.7;"><label style="font-size: 0.8rem;">手動マーカー (優先度)</label><div class="chip-group"><div class="chip" :class="{selected: editForm.priority===1}" @click="editForm.priority=1">高</div><div class="chip" :class="{selected: editForm.priority===0}" @click="editForm.priority=0">中</div><div class="chip" :class="{selected: editForm.priority===-1}" @click="editForm.priority=-1">低</div></div></div>
                 <div class="modal-actions"><button class="btn btn-cancel" @click="editForm = null">キャンセル</button><button class="btn btn-save" @click="saveTask">保存</button></div>
             </div>
         </div>
@@ -389,65 +339,14 @@
         <div v-if="showReportModal" class="modal-overlay" @click.self="showReportModal = false">
             <div class="modal" style="max-width: 500px;">
                 <h3>📋 {{ isExportMode ? 'タスク一覧出力' : '日報抽出' }}</h3>
-
-                <div v-if="isExportMode" class="form-group">
-                    <div class="chip-group">
-                        <div class="chip" :class="{selected: exportScope==='all'}" @click="changeExportScope('all')">すべて</div>
-                        <div class="chip" :class="{selected: exportScope==='active'}" @click="changeExportScope('active')">進行中</div>
-                        <div class="chip" :class="{selected: exportScope==='done'}" @click="changeExportScope('done')">完了</div>
-                        <div class="chip" :class="{selected: exportScope==='archive'}" @click="changeExportScope('archive')">アーカイブ</div>
-                    </div>
-                </div>
-
-                <div v-if="!isExportMode" class="form-group">
-                    <label>対象ユーザー (担当者)</label>
-                    <select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview">
-                        <option v-for="u in allAssignees" :value="u">{{ u }}</option>
-                    </select>
-                </div>
-
-                <div v-if="!isExportMode" class="form-group">
-                    <label>対象期間</label>
-                    <div class="chip-group">
-                        <div class="chip" :class="{selected: reportForm.targetRange==='today'}" @click="reportForm.targetRange='today'; updateReportPreview()">今日</div>
-                        <div class="chip" :class="{selected: reportForm.targetRange==='yesterday'}" @click="reportForm.targetRange='yesterday'; updateReportPreview()">昨日</div>
-                    </div>
-                </div>
-
-                <div v-if="!isExportMode" class="form-group">
-                    <label>抽出条件 (発生元)</label>
-                    <div class="row">
-                        <select class="form-control" v-model="reportForm.sourceGuild" @change="reportForm.sourceChannel = ''; updateReportPreview()">
-                            <option value="">全てのサーバー</option>
-                            <option v-for="g in existingGuilds" :value="g">{{ g }}</option>
-                        </select>
-                        <select class="form-control" v-model="reportForm.sourceChannel" @change="updateReportPreview" :disabled="!reportForm.sourceGuild">
-                            <option value="">全てのチャンネル</option>
-                            <option v-for="c in getChannelsForGuild(reportForm.sourceGuild)" :value="c">{{ c }}</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label>プレビュー (コピー可)</label>
-                    <textarea class="form-control" rows="10" readonly>{{ reportPreview }}</textarea>
-                    <button class="btn-icon-small" @click="copyReport" style="margin-top:5px;">📋 コピー</button>
-                </div>
-
+                <div v-if="isExportMode" class="form-group"><div class="chip-group"><div class="chip" :class="{selected: exportScope==='all'}" @click="changeExportScope('all')">すべて</div><div class="chip" :class="{selected: exportScope==='active'}" @click="changeExportScope('active')">進行中</div><div class="chip" :class="{selected: exportScope==='done'}" @click="changeExportScope('done')">完了</div><div class="chip" :class="{selected: exportScope==='archive'}" @click="changeExportScope('archive')">アーカイブ</div></div></div>
+                <div v-if="!isExportMode" class="form-group"><label>対象ユーザー</label><select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview"><option v-for="u in allAssignees" :value="u">{{ u }}</option></select></div>
+                <div v-if="!isExportMode" class="form-group"><label>対象期間</label><div class="chip-group"><div class="chip" :class="{selected: reportForm.targetRange==='today'}" @click="reportForm.targetRange='today'; updateReportPreview()">今日</div><div class="chip" :class="{selected: reportForm.targetRange==='yesterday'}" @click="reportForm.targetRange='yesterday'; updateReportPreview()">昨日</div></div></div>
+                <div v-if="!isExportMode" class="form-group"><label>抽出条件</label><div class="row"><select class="form-control" v-model="reportForm.sourceGuild" @change="reportForm.sourceChannel = ''; updateReportPreview()"><option value="">全てのサーバー</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="reportForm.sourceChannel" @change="updateReportPreview" :disabled="!reportForm.sourceGuild"><option value="">全てのチャンネル</option><option v-for="c in getChannelsForGuild(reportForm.sourceGuild)" :value="c">{{ c }}</option></select></div></div>
+                <div class="form-group"><label>プレビュー</label><textarea class="form-control" rows="10" readonly>{{ reportPreview }}</textarea><button class="btn-icon-small" @click="copyReport" style="margin-top:5px;">📋 コピー</button></div>
                 <hr v-if="!isExportMode" style="border:0; border-top:1px solid #eee; margin:15px 0;">
-
-                <div v-if="!isExportMode" class="form-group">
-                    <label>Discordへ送信</label>
-                    <div class="row">
-                        <select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select>
-                        <select class="form-control" v-model="reportForm.channelName"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(reportForm.guildName)" :value="c">{{ c }}</option></select>
-                    </div>
-                </div>
-
-                <div class="modal-actions">
-                    <button class="btn btn-cancel" @click="showReportModal = false">閉じる</button>
-                    <button v-if="!isExportMode" class="btn btn-save" @click="sendReport">📤 送信</button>
-                </div>
+                <div v-if="!isExportMode" class="form-group"><label>Discordへ送信</label><div class="row"><select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="reportForm.channelName"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(reportForm.guildName)" :value="c">{{ c }}</option></select></div></div>
+                <div class="modal-actions"><button class="btn btn-cancel" @click="showReportModal = false">閉じる</button><button v-if="!isExportMode" class="btn btn-save" @click="sendReport">📤 送信</button></div>
             </div>
         </div>
 
@@ -480,7 +379,6 @@
             data() {
                 return {
                     tasks: [], configs: [], loading: true, editForm: null, isCreating: false,
-                    // デフォルトで自動優先度ソートにする
                     sortMode: 'auto',
                     userId: null, myUserId: null,
                     showBatchModal: false, batchForm: { guildName: '', channelName: '' }, batchError: '',
@@ -488,7 +386,9 @@
                     isExportMode: false, exportScope: 'all',
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
                     showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [],
-                    newTagInput: '', selectedExistingTag: ''
+                    newTagInput: '', selectedExistingTag: '',
+                    // ★追加: ヘッダー開閉状態
+                    headerExpanded: true
                 }
             },
             computed: {
@@ -612,14 +512,10 @@
                 },
                 openCreateModal() {
                     this.isCreating = true;
-
-                    // 新規作成時：開始日=今日、期日=1週間後 をデフォルトセット
                     const now = new Date();
                     const nextWeek = new Date();
                     nextWeek.setDate(now.getDate() + 7);
-
                     const fmt = (d) => d.getFullYear() + '-' + (d.getMonth() + 1).toString().padStart(2, '0') + '-' + d.getDate().toString().padStart(2, '0');
-
                     this.editForm = {
                         content: '', priority: 0, difficulty: 0, tags: [], assignee: '',
                         userName: '', guildName: '', channelName: '',
@@ -630,39 +526,17 @@
                 openEdit(task) {
                     this.isCreating = false;
                     this.editForm = { ...task, tags: [...task.tags] };
-
                     if (this.editForm.startDate) this.editForm.startDate = this.editForm.startDate.split('T')[0];
                     if (this.editForm.dueDate) this.editForm.dueDate = this.editForm.dueDate.split('T')[0];
-
                     this.newTagInput = ''; this.selectedExistingTag = '';
                 },
-                removeTag(tag) {
-                    this.editForm.tags = this.editForm.tags.filter(t => t !== tag);
-                },
-                addExistingTag() {
-                    if (this.selectedExistingTag && !this.editForm.tags.includes(this.selectedExistingTag)) {
-                        this.editForm.tags.push(this.selectedExistingTag);
-                    }
-                    this.selectedExistingTag = '';
-                },
-                addNewTag() {
-                    const t = this.newTagInput.trim();
-                    if (t && !this.editForm.tags.includes(t)) {
-                        this.editForm.tags.push(t);
-                    }
-                    this.newTagInput = '';
-                },
+                removeTag(tag) { this.editForm.tags = this.editForm.tags.filter(t => t !== tag); },
+                addExistingTag() { if (this.selectedExistingTag && !this.editForm.tags.includes(this.selectedExistingTag)) { this.editForm.tags.push(this.selectedExistingTag); } this.selectedExistingTag = ''; },
+                addNewTag() { const t = this.newTagInput.trim(); if (t && !this.editForm.tags.includes(t)) { this.editForm.tags.push(t); } this.newTagInput = ''; },
                 async saveTask() {
                     if (!this.editForm.content) { alert('内容を入力してください'); return; }
-
-                    // 日付バリデーション
-                    if (this.editForm.startDate && !this.isValidDate(this.editForm.startDate)) {
-                        alert('開始日が無効な日付形式です。'); return;
-                    }
-                    if (this.editForm.dueDate && !this.isValidDate(this.editForm.dueDate)) {
-                        alert('期日が無効な日付形式です。'); return;
-                    }
-
+                    if (this.editForm.startDate && !this.isValidDate(this.editForm.startDate)) { alert('開始日が無効です'); return; }
+                    if (this.editForm.dueDate && !this.isValidDate(this.editForm.dueDate)) { alert('期日が無効です'); return; }
                     const payload = { ...this.editForm };
                     await fetch(this.isCreating ? '/api/create' : '/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     this.editForm = null; this.fetchTasks();
@@ -677,98 +551,42 @@
                     this.updateReportPreview();
                     this.showReportModal = true;
                 },
-                exportList(scope) {
-                    this.isExportMode = true;
-                    this.exportScope = scope;
-                    this.generateExportText();
-                    this.showReportModal = true;
-                },
-                changeExportScope(scope) {
-                    this.exportScope = scope;
-                    this.generateExportText();
-                },
+                exportList(scope) { this.isExportMode = true; this.exportScope = scope; this.generateExportText(); this.showReportModal = true; },
+                changeExportScope(scope) { this.exportScope = scope; this.generateExportText(); },
                 generateExportText() {
                     const scope = this.exportScope;
                     let text = "";
-
                     const isFiltered = this.filterUsers.length > 0 || this.filterChannels.length > 0 || this.filterTags.length > 0 || this.filterGuilds.length > 0 || this.filterPriorities.length > 0;
                     const filterNote = isFiltered ? " (絞り込み済み)" : "";
-
                     const formatTasks = (list, title, isDone = false) => {
                         if (list.length === 0) return "";
                         let res = `\n${title} (${list.length}件)\n`;
                         res += list.map(t => {
-                            let prio = this.getPrioLabel(t);
-                            if (prio) prio = `[${prio}] `;
-                            let time = "";
-                            if (isDone && t.completedAt) {
-                                time = `[${this.formatTime(t.completedAt)}] `;
-                            }
+                            let prio = this.getPrioLabel(t); if (prio) prio = `[${prio}] `;
+                            let time = ""; if (isDone && t.completedAt) { time = `[${this.formatTime(t.completedAt)}] `; }
                             return `・${time}${prio}${t.content}`;
                         }).join('\n');
                         return res + "\n";
                     };
-
-                    if (scope === 'all') {
-                        text += `📊 タスク一覧出力${filterNote}\n`;
-                        text += formatTasks(this.tasksActive, "🚀 進行中");
-                        text += formatTasks(this.tasksDone, "✅ 完了", true);
-                        text += formatTasks(this.tasksArchive, "🗑️ アーカイブ");
-                    } else if (scope === 'active') {
-                        text += formatTasks(this.tasksActive, `🚀 未完了タスク一覧${filterNote}`);
-                    } else if (scope === 'done') {
-                        text += formatTasks(this.tasksDone, `✅ 完了タスク一覧${filterNote}`, true);
-                    } else if (scope === 'archive') {
-                        text += formatTasks(this.tasksArchive, `🗑️ アーカイブ一覧${filterNote}`);
-                    }
-
-                    if (!text.trim()) {
-                        this.reportPreview = "(表示するタスクはありません)";
-                    } else {
-                        this.reportPreview = text.trim();
-                    }
+                    if (scope === 'all') { text += `📊 タスク一覧出力${filterNote}\n`; text += formatTasks(this.tasksActive, "🚀 進行中"); text += formatTasks(this.tasksDone, "✅ 完了", true); text += formatTasks(this.tasksArchive, "🗑️ アーカイブ"); }
+                    else if (scope === 'active') { text += formatTasks(this.tasksActive, `🚀 未完了タスク一覧${filterNote}`); }
+                    else if (scope === 'done') { text += formatTasks(this.tasksDone, `✅ 完了タスク一覧${filterNote}`, true); }
+                    else if (scope === 'archive') { text += formatTasks(this.tasksArchive, `🗑️ アーカイブ一覧${filterNote}`); }
+                    this.reportPreview = text.trim() || "(表示するタスクはありません)";
                 },
                 updateReportPreview() {
                     if (this.isExportMode) return;
-                    const u = this.reportForm.targetUser;
-                    const sg = this.reportForm.sourceGuild;
-                    const sc = this.reportForm.sourceChannel;
+                    const u = this.reportForm.targetUser; const sg = this.reportForm.sourceGuild; const sc = this.reportForm.sourceChannel;
                     if (!u) { this.reportPreview = '(ユーザーを選択してください)'; return; }
-
                     const today = new Date(); today.setHours(0, 0, 0, 0);
-
-                    let start = new Date(today);
-                    let end = new Date(today);
-                    end.setDate(end.getDate() + 1);
-
+                    let start = new Date(today); let end = new Date(today); end.setDate(end.getDate() + 1);
                     let dateLabel = "本日";
-                    if (this.reportForm.targetRange === 'yesterday') {
-                        start.setDate(start.getDate() - 1);
-                        end = new Date(today);
-                        dateLabel = "昨日";
-                    }
-
-                    const completed = this.tasks.filter(t =>
-                        (t.assignee === u || (!t.assignee && t.userName === u)) &&
-                        t.completedAt &&
-                        new Date(t.completedAt) >= start &&
-                        new Date(t.completedAt) < end &&
-                        (!sg || t.guildName === sg) &&
-                        (!sc || t.channelName === sc)
-                    ).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
-
-                    if (completed.length === 0) {
-                        this.reportPreview = `📭 Daily Report: ${u}\n${dateLabel}の完了タスクはありません。`;
-                    } else {
-                        const lines = completed.map(t => {
-                            let loc = '';
-                            if (!sg && t.guildName) loc = ` [${t.guildName}]`;
-                            return `・[${this.formatTime(t.completedAt)}${loc}] ${t.content}`;
-                        });
-
-                        let header = `📊 Daily Report: ${u}`;
-                        if (sg) { header += ` (${sg}`; if (sc) header += ` / ${sc}`; header += `)`; }
-
+                    if (this.reportForm.targetRange === 'yesterday') { start.setDate(start.getDate() - 1); end = new Date(today); dateLabel = "昨日"; }
+                    const completed = this.tasks.filter(t => (t.assignee === u || (!t.assignee && t.userName === u)) && t.completedAt && new Date(t.completedAt) >= start && new Date(t.completedAt) < end && (!sg || t.guildName === sg) && (!sc || t.channelName === sc)).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
+                    if (completed.length === 0) { this.reportPreview = `📭 Daily Report: ${u}\n${dateLabel}の完了タスクはありません。`; }
+                    else {
+                        const lines = completed.map(t => { let loc = ''; if (!sg && t.guildName) loc = ` [${t.guildName}]`; return `・[${this.formatTime(t.completedAt)}${loc}] ${t.content}`; });
+                        let header = `📊 Daily Report: ${u}`; if (sg) { header += ` (${sg}`; if (sc) header += ` / ${sc}`; header += `)`; }
                         this.reportPreview = `${header}\n${dateLabel} ${completed.length}件 完了！\n\n` + lines.join('\n');
                     }
                 },
@@ -776,41 +594,12 @@
                 async sendReport() {
                     if (!this.reportForm.targetUser || !this.reportForm.guildName || !this.reportForm.channelName) { alert('送信先を選択してください'); return; }
                     if (!confirm('Discordに送信しますか？')) return;
-
-                    await fetch('/api/report/send', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            targetUser: this.reportForm.targetUser,
-                            targetGuild: this.reportForm.guildName,
-                            targetChannel: this.reportForm.channelName,
-                            sourceGuild: this.reportForm.sourceGuild,
-                            sourceChannel: this.reportForm.sourceChannel,
-                            targetRange: this.reportForm.targetRange
-                        })
-                    });
+                    await fetch('/api/report/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUser: this.reportForm.targetUser, targetGuild: this.reportForm.guildName, targetChannel: this.reportForm.channelName, sourceGuild: this.reportForm.sourceGuild, sourceChannel: this.reportForm.sourceChannel, targetRange: this.reportForm.targetRange }) });
                     this.showReportModal = false; alert('送信しました！');
                 },
-                openConfigModal() {
-                    this.configForm = { userName: this.myUserName || '', reportTime: '00:00', targetGuild: '', targetChannel: '' };
-                    this.showConfigModal = true;
-                    if (this.configForm.userName) this.loadUserConfig();
-                },
-                loadUserConfig() {
-                    if (!this.configForm.userName) return;
-                    const userTask = this.tasks.find(t => t.userName === this.configForm.userName);
-                    if (!userTask) return;
-                    const conf = this.configs.find(c => c.userId == userTask.userId);
-                    if (conf) { this.configForm.reportTime = conf.reportTime; this.configForm.targetGuild = conf.targetGuild || ''; this.configForm.targetChannel = conf.targetChannel || ''; }
-                    else { this.configForm.reportTime = '00:00'; this.configForm.targetGuild = ''; this.configForm.targetChannel = ''; }
-                },
-                async saveConfig() {
-                    const userTask = this.tasks.find(t => t.userName === this.configForm.userName);
-                    if (!userTask) { alert('ユーザーが見つかりません'); return; }
-                    const payload = { userId: userTask.userId, userName: userTask.userName, reportTime: this.configForm.reportTime, targetGuild: this.configForm.targetGuild, targetChannel: this.configForm.targetChannel };
-                    await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    this.showConfigModal = false; alert('保存しました'); this.fetchTasks();
-                },
+                openConfigModal() { this.configForm = { userName: this.myUserName || '', reportTime: '00:00', targetGuild: '', targetChannel: '' }; this.showConfigModal = true; if (this.configForm.userName) this.loadUserConfig(); },
+                loadUserConfig() { if (!this.configForm.userName) return; const userTask = this.tasks.find(t => t.userName === this.configForm.userName); if (!userTask) return; const conf = this.configs.find(c => c.userId == userTask.userId); if (conf) { this.configForm.reportTime = conf.reportTime; this.configForm.targetGuild = conf.targetGuild || ''; this.configForm.targetChannel = conf.targetChannel || ''; } else { this.configForm.reportTime = '00:00'; this.configForm.targetGuild = ''; this.configForm.targetChannel = ''; } },
+                async saveConfig() { const userTask = this.tasks.find(t => t.userName === this.configForm.userName); if (!userTask) { alert('ユーザーが見つかりません'); return; } const payload = { userId: userTask.userId, userName: userTask.userName, reportTime: this.configForm.reportTime, targetGuild: this.configForm.targetGuild, targetChannel: this.configForm.targetChannel }; await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.showConfigModal = false; alert('保存しました'); this.fetchTasks(); },
                 onDragStart(evt, t) { evt.dataTransfer.dropEffect = 'move'; evt.dataTransfer.effectAllowed = 'move'; evt.dataTransfer.setData('taskId', t.id); },
                 onDrop(evt, s) { const id = evt.dataTransfer.getData('taskId'); const t = this.tasks.find(x => x.id === id); if (t) { if (s === 'active') this.moveToActive(t); else if (s === 'done') this.moveToDone(t); else this.moveToArchive(t); } },
                 async moveToDone(t) { if (t.isForgotten) await this.post('/api/restore', t); if (!t.completedAt) { t.completedAt = new Date().toISOString(); await this.post('/api/done', t); } },
@@ -818,129 +607,18 @@
                 async moveToArchive(t) { if (!t.isForgotten) { t.isForgotten = true; await this.post('/api/archive', t); } },
                 async deleteTask(t) { if (confirm('完全削除しますか？')) await this.post('/api/delete', t); },
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
-
-                // 自動優先度スコア計算
-                getAutoScore(t) {
-                    // 1. 時間スコア (短い=100, 長い=200, 不明=300)
-                    let timeScore = 300;
-                    if (t.timeMode === 1) timeScore = 100;
-                    else if (t.timeMode === 2) timeScore = 200;
-
-                    // 2. 期日スコア (近い=10, 遠い=20, 不明=30)
-                    let dateScore = 30;
-                    if (t.dueDate) {
-                        const due = new Date(t.dueDate);
-                        const now = new Date();
-                        now.setHours(0, 0, 0, 0);
-                        const diffTime = due - now;
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-                        if (diffDays <= 3) dateScore = 10; // 3日以内なら近い
-                        else dateScore = 20;
-                    }
-
-                    return timeScore + dateScore;
-                },
-
-                // 自動優先度ラベル取得
-                getAutoPriorityLabel(t) {
-                    // '不明', '短い', '長い'
-                    const timeLabels = { 0: '不明', 1: '短い', 2: '長い' };
-                    let dateLabel = '不明';
-                    if (t.dueDate) {
-                        const due = new Date(t.dueDate);
-                        const now = new Date();
-                        now.setHours(0, 0, 0, 0);
-                        const diffTime = due - now;
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        if (diffDays <= 3) dateLabel = '近い';
-                        else dateLabel = '遠い';
-                    }
-                    return `【${timeLabels[t.timeMode || 0]}・${dateLabel}】`;
-                },
-
-                // スコアによる色分け
-                getAutoPriorityClass(t) {
-                    const score = this.getAutoScore(t);
-                    if (score <= 110) return 'prio-lv1'; // 短・近
-                    if (score <= 120) return 'prio-lv2'; // 短・遠
-                    if (score <= 210) return 'prio-lv3'; // 長・近
-                    return 'prio-lv4';
-                },
-
-                applySort(l) {
-                    if (this.sortMode === 'category') {
-                        return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a)));
-                    }
-                    if (this.sortMode === 'auto') {
-                        // 自動優先度ソート
-                        return l.sort((a, b) => this.getAutoScore(a) - this.getAutoScore(b));
-                    }
-                    // 従来の手動優先度ソート
-                    return l.sort((a, b) => this.getScore(b) - this.getScore(a));
-                },
-
+                getAutoScore(t) { let timeScore = 300; if (t.timeMode === 1) timeScore = 100; else if (t.timeMode === 2) timeScore = 200; let dateScore = 30; if (t.dueDate) { const due = new Date(t.dueDate); const now = new Date(); now.setHours(0, 0, 0, 0); const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24)); if (diffDays <= 3) dateScore = 10; else dateScore = 20; } return timeScore + dateScore; },
+                getAutoPriorityLabel(t) { const timeLabels = { 0: '不明', 1: '短い', 2: '長い' }; let dateLabel = '不明'; if (t.dueDate) { const due = new Date(t.dueDate); const now = new Date(); now.setHours(0, 0, 0, 0); const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24)); if (diffDays <= 3) dateLabel = '近い'; else dateLabel = '遠い'; } return `【${timeLabels[t.timeMode || 0]}・${dateLabel}】`; },
+                getAutoPriorityClass(t) { const score = this.getAutoScore(t); if (score <= 110) return 'prio-lv1'; if (score <= 120) return 'prio-lv2'; if (score <= 210) return 'prio-lv3'; return 'prio-lv4'; },
+                applySort(l) { if (this.sortMode === 'category') { return l.sort((a, b) => ((a.tags[0] || 'z').localeCompare(b.tags[0] || 'z')) || (this.getScore(b) - this.getScore(a))); } if (this.sortMode === 'auto') { return l.sort((a, b) => this.getAutoScore(a) - this.getAutoScore(b)); } return l.sort((a, b) => this.getScore(b) - this.getScore(a)); },
                 getScore(t) { return (t.priority === 1 ? 10 : (t.priority === 0 ? 5 : 1)); },
                 getPrioLabel(t) { return t.priority === 1 ? '高' : (t.priority === 0 ? '中' : '低'); },
                 getPrioClass(t) { return t.priority === 1 ? 'p-1' : (t.priority === 0 ? 'p-4' : 'p-3'); },
-
-                formatDateShort(iso) {
-                    if (!iso) return '';
-                    const d = new Date(iso);
-                    return (d.getMonth() + 1) + '/' + d.getDate();
-                },
-                getDueDateStyle(task) {
-                    if (!task.dueDate) return '';
-                    const due = new Date(task.dueDate);
-                    const now = new Date();
-                    now.setHours(0, 0, 0, 0);
-                    if (due < now) return 'background:#fee; color:#d32f2f; border-color:#ef9a9a;';
-                    if (due.getTime() === now.getTime()) return 'background:#fff3e0; color:#e65100; border-color:#ffe0b2;';
-                    return 'background:#e3f2fd; color:#1565c0; border-color:#bbdefb;';
-                },
-
-                // 日付入力補正 (yyyyMMdd -> yyyy-MM-dd)
-                onDateBlur(field) {
-                    let val = this.editForm[field];
-                    if (!val) return;
-                    val = val.trim();
-                    if (/^\d{8}$/.test(val)) {
-                        const y = val.substring(0, 4);
-                        const m = val.substring(4, 6);
-                        const d = val.substring(6, 8);
-                        this.editForm[field] = `${y}-${m}-${d}`;
-                        return;
-                    }
-                    const date = new Date(val);
-                    if (!isNaN(date.getTime())) {
-                        const y = date.getFullYear();
-                        const m = (date.getMonth() + 1).toString().padStart(2, '0');
-                        const d = date.getDate().toString().padStart(2, '0');
-                        this.editForm[field] = `${y}-${m}-${d}`;
-                    }
-                },
-                // 入力制限 (数字と記号のみ)
-                filterDateInput(e, field) {
-                    const val = e.target.value;
-                    const filtered = val.replace(/[^0-9\-\/]/g, '');
-                    if (val !== filtered) {
-                        this.editForm[field] = filtered;
-                    }
-                },
-                // 日付妥当性チェック
-                isValidDate(val) {
-                    if (!val) return true;
-                    const isYYYYMMDD = /^\d{8}$/.test(val);
-                    const isFormatted = /^\d{4}[\-\/]\d{2}[\-\/]\d{2}$/.test(val);
-                    if (!isYYYYMMDD && !isFormatted) return false;
-                    let dStr = val;
-                    if (isYYYYMMDD) {
-                        dStr = `${val.substring(0, 4)}-${val.substring(4, 6)}-${val.substring(6, 8)}`;
-                    }
-                    const date = new Date(dStr);
-                    return !isNaN(date.getTime());
-                },
-
+                formatDateShort(iso) { if (!iso) return ''; const d = new Date(iso); return (d.getMonth() + 1) + '/' + d.getDate(); },
+                getDueDateStyle(task) { if (!task.dueDate) return ''; const due = new Date(task.dueDate); const now = new Date(); now.setHours(0, 0, 0, 0); if (due < now) return 'background:#fee; color:#d32f2f; border-color:#ef9a9a;'; if (due.getTime() === now.getTime()) return 'background:#fff3e0; color:#e65100; border-color:#ffe0b2;'; return 'background:#e3f2fd; color:#1565c0; border-color:#bbdefb;'; },
+                onDateBlur(field) { let val = this.editForm[field]; if (!val) return; val = val.trim(); if (/^\d{8}$/.test(val)) { const y = val.substring(0, 4); const m = val.substring(4, 6); const d = val.substring(6, 8); this.editForm[field] = `${y}-${m}-${d}`; return; } const date = new Date(val); if (!isNaN(date.getTime())) { const y = date.getFullYear(); const m = (date.getMonth() + 1).toString().padStart(2, '0'); const d = date.getDate().toString().padStart(2, '0'); this.editForm[field] = `${y}-${m}-${d}`; } },
+                filterDateInput(e, field) { const val = e.target.value; const filtered = val.replace(/[^0-9\-\/]/g, ''); if (val !== filtered) { this.editForm[field] = filtered; } },
+                isValidDate(val) { if (!val) return true; const isYYYYMMDD = /^\d{8}$/.test(val); const isFormatted = /^\d{4}[\-\/]\d{2}[\-\/]\d{2}$/.test(val); if (!isYYYYMMDD && !isFormatted) return false; let dStr = val; if (isYYYYMMDD) { dStr = `${val.substring(0, 4)}-${val.substring(4, 6)}-${val.substring(6, 8)}`; } const date = new Date(dStr); return !isNaN(date.getTime()); },
                 formatTime(iso) { if (!iso) return ''; const d = new Date(iso); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0'); }
             }
         }).mount('#app')

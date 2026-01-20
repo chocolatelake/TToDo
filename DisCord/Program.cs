@@ -26,9 +26,7 @@ var app = builder.Build();
 Globals.LoadConfiguration(app.Configuration);
 Globals.LoadData();
 
-// ★修正: 環境判定を削除し、どんなときも "TToDo" キーのトークンを使用する
 string? tokenFromFile = app.Configuration["TToDo"];
-
 if (!string.IsNullOrEmpty(tokenFromFile) && tokenFromFile != "あなたのトークン")
 {
     Globals.BotToken = tokenFromFile;
@@ -45,11 +43,12 @@ app.MapRazorPages();
 //        完全版APIリスト
 // ==========================================
 
+// ★修正: フィルタ(Where)を削除し、アーカイブや完了済みも含めた全てのタスクを返す
 app.MapGet("/api/tasks", () =>
 {
     lock (Globals.Lock)
     {
-        return Globals.AllTasks.Where(t => t.CompletedAt == null && !t.IsForgotten).OrderByDescending(t => t.Priority).ToList();
+        return Globals.AllTasks.OrderByDescending(t => t.Priority).ToList();
     }
 });
 
@@ -93,7 +92,7 @@ app.MapPost("/api/update", (TaskItem updated) =>
 app.MapPost("/api/done", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = item.CompletedAt; Globals.SaveData(); } } return Results.Ok(); });
 app.MapPost("/api/restore", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = null; t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });
 
-// アーカイブ
+// アーカイブ処理
 app.MapPost("/api/archive", (TaskItem item) => {
     lock (Globals.Lock)
     {
@@ -108,7 +107,7 @@ app.MapPost("/api/archive", (TaskItem item) => {
     return Results.Ok();
 });
 
-// 物理削除
+// 物理削除処理
 app.MapPost("/api/delete", (TaskItem item) => {
     lock (Globals.Lock)
     {
