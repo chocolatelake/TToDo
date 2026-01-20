@@ -26,7 +26,9 @@ var app = builder.Build();
 Globals.LoadConfiguration(app.Configuration);
 Globals.LoadData();
 
-string? tokenFromFile = app.Environment.IsDevelopment() ? app.Configuration["TToDo_Dev"] : app.Configuration["TToDo"];
+// ★修正: 環境判定を削除し、どんなときも "TToDo" キーのトークンを使用する
+string? tokenFromFile = app.Configuration["TToDo"];
+
 if (!string.IsNullOrEmpty(tokenFromFile) && tokenFromFile != "あなたのトークン")
 {
     Globals.BotToken = tokenFromFile;
@@ -91,7 +93,7 @@ app.MapPost("/api/update", (TaskItem updated) =>
 app.MapPost("/api/done", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = item.CompletedAt; Globals.SaveData(); } } return Results.Ok(); });
 app.MapPost("/api/restore", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = null; t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });
 
-// ★修正: アーカイブ時に現在日時を入れる
+// アーカイブ
 app.MapPost("/api/archive", (TaskItem item) => {
     lock (Globals.Lock)
     {
@@ -99,14 +101,14 @@ app.MapPost("/api/archive", (TaskItem item) => {
         if (t != null)
         {
             t.IsForgotten = true;
-            t.ArchivedAt = Globals.GetJstNow(); // 追加
+            t.ArchivedAt = Globals.GetJstNow();
             Globals.SaveData();
         }
     }
     return Results.Ok();
 });
 
-// ★修正: 物理削除用API（もしWebから呼ぶ場合も即消し）
+// 物理削除
 app.MapPost("/api/delete", (TaskItem item) => {
     lock (Globals.Lock)
     {
