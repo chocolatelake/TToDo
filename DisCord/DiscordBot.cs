@@ -59,7 +59,10 @@ namespace TToDo
         {
             await _client.LoginAsync(TokenType.Bot, Globals.BotToken);
             await _client.StartAsync();
-            _ = Task.Run(() => AutoReportLoop());
+            // 起動中ステータスを表示
+            await _client.SetGameAsync("!ttodo help | 起動中...");
+
+            // ★削除: AutoReportLoop() の呼び出しは削除しました（BotBackgroundService側で管理するため）
         }
 
         // --- コマンド処理 ---
@@ -506,7 +509,8 @@ namespace TToDo
             return true;
         }
 
-        private async Task RunDailyClose(ulong userId)
+        // ★修正: private -> public に変更し、外部から呼べるようにしました
+        public async Task RunDailyClose(ulong userId)
         {
             UserConfig? config;
             List<string> allKnownUserNames;
@@ -631,41 +635,7 @@ namespace TToDo
             }
         }
 
-        private async Task AutoReportLoop()
-        {
-            while (true)
-            {
-                try
-                {
-                    var now = Globals.GetJstNow();
-                    if (now.Second == 0)
-                    {
-                        string curTime = now.ToString("HH:mm");
-                        List<ulong> targetUserIds;
-                        lock (Globals.Lock)
-                        {
-                            targetUserIds = Globals.Configs.Select(c => c.UserId).Distinct().ToList();
-                        }
-                        foreach (var uid in targetUserIds)
-                        {
-                            string targetTime = "00:00";
-                            lock (Globals.Lock)
-                            {
-                                var c = Globals.Configs.FirstOrDefault(x => x.UserId == uid);
-                                if (c != null) targetTime = c.ReportTime;
-                            }
-                            if (targetTime == curTime)
-                            {
-                                await RunDailyClose(uid);
-                            }
-                        }
-                        await Task.Delay(60000);
-                    }
-                    else await Task.Delay(500);
-                }
-                catch { await Task.Delay(1000); }
-            }
-        }
+        // AutoReportLoop は削除しました
 
         private int GetAutoScore(TaskItem t)
         {

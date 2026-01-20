@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -11,6 +12,13 @@ namespace TToDo
     {
         private readonly DiscordBot _bot;
 
+        // システムメンテナンス（掃除・バックアップ）を最後に実行した日
+        private DateTime _lastSystemMaintenanceDate = DateTime.MinValue;
+
+        // ユーザーごとに「最後に日報を出した日」を覚えておく辞書
+        // キー: UserId, 値: 最後に実行した日付
+        private Dictionary<ulong, DateTime> _userLastReportDates = new Dictionary<ulong, DateTime>();
+
         public BotBackgroundService(DiscordBot bot)
         {
             _bot = bot;
@@ -18,24 +26,71 @@ namespace TToDo
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            // Bot起動
             await _bot.StartAsync();
+
+            // 起動直後の暴発を防ぐため、システムメンテは「昨日済ませた」ことにする
+            _lastSystemMaintenanceDate = DateTime.Now.Date.AddDays(-1);
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                var now = DateTime.Now;
-                var nextRun = now.Date.AddDays(1);
-                var delay = nextRun - now;
-
                 try
                 {
-                    // 毎日0時に実行
-                    await Task.Delay(delay, stoppingToken);
+                    var now = Globals.GetJstNow(); // 日本時間
+                    string currentTimeStr = now.ToString("HH:mm");
 
-                    // 1. 古いアーカイブの自動削除 (90日経過)
-                    CleanupOldArchives();
+                    // ---------------------------------------------------------
+                    // 1. システムメンテ（掃除・バックアップ）: 日付が変わっていたら実行
+                    // ---------------------------------------------------------
+                    if (_lastSystemMaintenanceDate.Date < now.Date)
+                    {
+                        Console.WriteLine($"[System] Starting Daily Maintenance: {now}");
+                        CleanupOldArchives();
+                        BackupData();
 
-                    // 2. バックアップ
-                    BackupData();
+                        // 「今日は終わった」と記録
+                        _lastSystemMaintenanceDate = now.Date;
+                        Console.WriteLine($"[System] Maintenance Done. Next run will be tomorrow.");
+                    }
+
+                    // ---------------------------------------------------------
+                    // 2. ユーザーごとの日報チェック: 設定時刻になったら実行
+                    // ---------------------------------------------------------
+                    List<UserConfig> currentConfigs;
+                    lock (Globals.Lock)
+                    {
+                        // 処理中にコレクションが変わらないようにコピーを取得
+                        currentConfigs = Globals.Configs.ToList();
+                    }
+
+                    foreach (var config in currentConfigs)
+                    {
+                        // Webで設定された ReportTime ("HH:mm") と現在時刻が一致するか？
+                        if (config.ReportTime == currentTimeStr)
+                        {
+                            // 辞書に未登録なら初期化
+                            if (!_userLastReportDates.ContainsKey(config.UserId))
+                            {
+                                _userLastReportDates[config.UserId] = DateTime.MinValue;
+                            }
+
+                            // 「今日まだ送っていない」なら実行
+                            if (_userLastReportDates[config.UserId].Date < now.Date)
+                            {
+                                Console.WriteLine($"[Report] Sending daily report for {config.UserName} ({config.UserId}) at {currentTimeStr}");
+
+                                // Bot側の日報処理を呼び出す
+                                await _bot.RunDailyClose(config.UserId);
+
+                                // 「今日は送った」と記録
+                                _userLastReportDates[config.UserId] = now.Date;
+                            }
+                        }
+                    }
+
+                    // 1分間待機して、またチェックする
+                    // 秒単位のズレがあっても、必ず「その分のどこか」でヒットします
+                    await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
                 }
                 catch (TaskCanceledException)
                 {
@@ -44,6 +99,8 @@ namespace TToDo
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Loop Error] {ex.Message}");
+                    // エラーが出ても止まらず、1分後に再トライ
+                    await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
                 }
             }
         }
@@ -55,7 +112,6 @@ namespace TToDo
                 lock (Globals.Lock)
                 {
                     var now = Globals.GetJstNow();
-                    // アーカイブ済み(IsForgotten) かつ アーカイブ日時(ArchivedAt)から90日経過しているもの
                     int removedCount = Globals.AllTasks.RemoveAll(t =>
                         t.IsForgotten &&
                         t.ArchivedAt.HasValue &&
@@ -79,13 +135,11 @@ namespace TToDo
         {
             try
             {
-                string sourceDir = "/Users/chocolatecakelake/Repositories/TToDo/TToDoData";
+                // Globalsからパスを取得（環境に合わせて柔軟にするため）
+                string sourceDir = Globals.DataDirectory;
                 string backupDir = Path.Combine(sourceDir, "Backup");
 
-                if (!Directory.Exists(backupDir))
-                {
-                    Directory.CreateDirectory(backupDir);
-                }
+                if (!Directory.Exists(backupDir)) Directory.CreateDirectory(backupDir);
 
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string[] files = { "tasks.json", "config.json" };
