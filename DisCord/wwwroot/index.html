@@ -8,7 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* --- 既存スタイル --- */
         .edit-tag {
             background-color: var(--primary-color);
             color: white;
@@ -37,6 +36,72 @@
             gap: 8px;
             margin-top: 8px;
         }
+
+        /* ボタン共通スタイル */
+        .btn-action {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            margin-right: 2px;
+        }
+
+        .btn-move-archive:hover {
+            background: #fee;
+            color: #c00;
+            border-color: #fcc;
+        }
+
+        .btn-move-done:hover {
+            background: #efe;
+            color: #080;
+            border-color: #cfc;
+        }
+
+        .btn-move-active:hover {
+            background: #eef;
+            color: #00c;
+            border-color: #ccf;
+        }
+
+        .btn-delete {
+            margin-left: auto;
+            color: #d32f2f;
+        }
+
+            .btn-delete:hover {
+                background: #ffebee;
+                border-color: #ef9a9a;
+            }
+
+        .archived-card {
+            opacity: 0.6;
+            background-color: #f9f9f9;
+            border: 1px dashed #ccc !important;
+        }
+
+            .archived-card .text {
+                color: #777;
+            }
+
+        .btn-export {
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+            opacity: 0.6;
+        }
+
+            .btn-export:hover {
+                opacity: 1;
+                transform: scale(1.1);
+            }
 
         .filter-avatar {
             width: 18px;
@@ -93,73 +158,7 @@
             border-color: #e0e0e0;
         }
 
-        .archived-card {
-            opacity: 0.6;
-            background-color: #f9f9f9;
-            border: 1px dashed #ccc !important;
-        }
-
-            .archived-card .text {
-                color: #777;
-            }
-
-        /* --- ボタン類 --- */
-        .btn-action {
-            width: 24px;
-            height: 24px;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-            background: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            margin-right: 2px;
-        }
-
-        .btn-move-archive:hover {
-            background: #fee;
-            color: #c00;
-            border-color: #fcc;
-        }
-
-        .btn-move-done:hover {
-            background: #efe;
-            color: #080;
-            border-color: #cfc;
-        }
-
-        .btn-move-active:hover {
-            background: #eef;
-            color: #00c;
-            border-color: #ccf;
-        }
-
-        .btn-delete {
-            margin-left: auto;
-            color: #d32f2f;
-        }
-
-            .btn-delete:hover {
-                background: #ffebee;
-                border-color: #ef9a9a;
-            }
-
-        .btn-export {
-            cursor: pointer;
-            background: transparent;
-            border: none;
-            font-size: 1rem;
-            opacity: 0.6;
-        }
-
-            .btn-export:hover {
-                opacity: 1;
-                transform: scale(1.1);
-            }
-
-        /* --- ヘッダー開閉アニメーション --- */
+        /* ヘッダー開閉 */
         .header-controls {
             transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
             max-height: 100px;
@@ -193,11 +192,8 @@
         <header>
             <div class="header-left">
                 <h1>TToDo Board</h1>
-                <button class="toggle-header-btn" @click="headerExpanded = !headerExpanded" :title="headerExpanded ? 'メニューを隠す' : 'メニューを表示'">
-                    {{ headerExpanded ? '🔼' : '🔽' }}
-                </button>
+                <button class="toggle-header-btn" @click="headerExpanded = !headerExpanded" :title="headerExpanded ? 'メニューを隠す' : 'メニューを表示'">{{ headerExpanded ? '🔼' : '🔽' }}</button>
             </div>
-
             <div class="header-controls" :class="{ collapsed: !headerExpanded }">
                 <button class="btn-sort" @click="openCreateModal" style="color:var(--primary-color); border-color:var(--primary-color);">＋ 新規タスク</button>
                 <span class="divider">|</span>
@@ -208,7 +204,6 @@
                 <button class="btn-sort" @click="showFilterMenu = !showFilterMenu">🔍 絞り込み</button>
                 <span class="divider">|</span>
                 <button v-if="userId" class="btn-sort" @click="openBatchChannelModal">📡 送信先一括</button>
-
                 <span class="sort-label">順序:</span>
                 <button class="btn-sort" :class="{active: sortMode==='auto'}" @click="sortMode='auto'" title="自動(時間×期日)">🤖</button>
                 <button class="btn-sort" :class="{active: sortMode==='priority'}" @click="sortMode='priority'" title="手動優先度">🔥</button>
@@ -228,22 +223,16 @@
 
         <div v-else class="kanban-board">
             <div class="column col-todo" @dragover="onDragOver" @drop="onDrop($event, 'active')">
-                <div class="column-header">
-                    <span>🚀 進行中 <span class="count">{{ tasksActive.length }}</span></span>
-                    <button class="btn-export" @click="exportList('active')" title="このリストのみコピー">📄</button>
-                </div>
+                <div class="column-header"><span>🚀 進行中 <span class="count">{{ tasksActive.length }}</span></span><button class="btn-export" @click="exportList('active')" title="このリストのみコピー">📄</button></div>
                 <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'active')">
-                    <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="[getPrioClass(task), { 'archived-card': task.isForgotten }]"
-                         draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+                    <div v-for="task in tasksActive" :key="task.id" class="card p-border" :class="[getPrioClass(task), { 'archived-card': task.isForgotten }]" draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
-                            <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'"><span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
                             <span v-if="task.isForgotten" style="font-size:0.7rem; color:#999; margin-left:auto;">(アーカイブ)</span>
                         </div>
                         <div class="task-content">
                             <div class="tags">
-                                <span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span>
-                                <span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
+                                <span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span><span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
                                 <span v-for="tag in task.tags" class="tag">#{{ tag }}</span>
                                 <span class="tag" v-if="task.startDate" style="background:#eef; color:#448;">🚀 {{ formatDateShort(task.startDate) }}～</span>
                                 <span class="tag auto-prio-tag" :class="getAutoPriorityClass(task)">{{ getAutoPriorityLabel(task) }}</span>
@@ -261,24 +250,15 @@
             </div>
 
             <div class="column col-done" @dragover="onDragOver" @drop="onDrop($event, 'done')">
-                <div class="column-header">
-                    <span>✅ 完了 <span class="count">{{ tasksDone.length }}</span></span>
-                    <button class="btn-export" @click="exportList('done')" title="このリストのみコピー">📄</button>
-                </div>
+                <div class="column-header"><span>✅ 完了 <span class="count">{{ tasksDone.length }}</span></span><button class="btn-export" @click="exportList('done')" title="このリストのみコピー">📄</button></div>
                 <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'done')">
-                    <div v-for="task in tasksDone" :key="task.id" class="card done-card" :class="{ 'archived-card': task.isForgotten }"
-                         draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+                    <div v-for="task in tasksDone" :key="task.id" class="card done-card" :class="{ 'archived-card': task.isForgotten }" draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
                         <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
-                            <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
+                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'"><span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
                             <span v-if="task.isForgotten" style="font-size:0.7rem; color:#999; margin-left:auto;">(アーカイブ)</span>
                         </div>
                         <div class="task-content">
-                            <div class="tags">
-                                <span class="tag time-tag">{{ formatTime(task.completedAt) }}</span>
-                                <span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span>
-                                <span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span>
-                            </div>
+                            <div class="tags"><span class="tag time-tag">{{ formatTime(task.completedAt) }}</span><span class="tag server-tag" v-if="task.guildName">🏢 {{ task.guildName }}</span><span class="tag channel-tag" v-if="task.channelName"># {{ task.channelName }}</span></div>
                             <div class="text">{{ task.content }}</div>
                         </div>
                         <div class="actions">
@@ -292,26 +272,13 @@
 
             <div class="column col-archive" @dragover="onDragOver" @drop="onDrop($event, 'archive')">
                 <div class="column-header">
-                    <div>
-                        🗑️ アーカイブ <span class="count">{{ tasksArchive.length }}</span>
-                        <button class="btn-export" @click="exportList('archive')" title="このリストのみコピー">📄</button>
-                    </div>
-                    <button class="btn-icon-small" @click="cleanupArchive"
-                            :title="filterUsers.length > 0 ? '表示中のユーザーのアーカイブを削除' : '全ユーザーのアーカイブを削除'"
-                            v-if="tasksArchive.length > 0" style="color: #cf513d;">
-                        {{ filterUsers.length > 0 ? '🗑️表示分削除' : '🗑️全削除' }}
-                    </button>
+                    <div>🗑️ アーカイブ <span class="count">{{ tasksArchive.length }}</span><button class="btn-export" @click="exportList('archive')" title="このリストのみコピー">📄</button></div>
+                    <button class="btn-icon-small" @click="cleanupArchive" :title="filterUsers.length > 0 ? '表示中のユーザーのアーカイブを削除' : '全ユーザーのアーカイブを削除'" v-if="tasksArchive.length > 0" style="color: #cf513d;">{{ filterUsers.length > 0 ? '🗑️表示分削除' : '🗑️全削除' }}</button>
                 </div>
                 <div class="task-container" @dragover="onDragOver" @drop.stop="onDrop($event, 'archive')">
-                    <div v-for="task in tasksArchive" :key="task.id" class="card archive-card"
-                         draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
-                        <div class="card-header">
-                            <img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'">
-                            <span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span>
-                        </div>
-                        <div class="task-content">
-                            <div class="text">{{ task.content }}</div>
-                        </div>
+                    <div v-for="task in tasksArchive" :key="task.id" class="card archive-card" draggable="true" @dragstart="onDragStart($event, task)" @click="openEdit(task)">
+                        <div class="card-header"><img v-if="task.avatarUrl" :src="task.avatarUrl" class="user-avatar" :title="task.assignee || '担当者未設定'"><span v-else class="user-badge">{{ task.assignee || '担当者未設定' }}</span></div>
+                        <div class="task-content"><div class="text">{{ task.content }}</div></div>
                         <div class="actions">
                             <button class="btn-action btn-move-active" @click.stop="moveToActive(task)" title="進行中へ">↩️</button>
                             <button class="btn-action btn-move-done" @click.stop="moveToDone(task)" title="完了へ">✅</button>
@@ -336,41 +303,9 @@
             </div>
         </div>
 
-        <div v-if="showReportModal" class="modal-overlay" @click.self="showReportModal = false">
-            <div class="modal" style="max-width: 500px;">
-                <h3>📋 {{ isExportMode ? 'タスク一覧出力' : '日報抽出' }}</h3>
-                <div v-if="isExportMode" class="form-group"><div class="chip-group"><div class="chip" :class="{selected: exportScope==='all'}" @click="changeExportScope('all')">すべて</div><div class="chip" :class="{selected: exportScope==='active'}" @click="changeExportScope('active')">進行中</div><div class="chip" :class="{selected: exportScope==='done'}" @click="changeExportScope('done')">完了</div><div class="chip" :class="{selected: exportScope==='archive'}" @click="changeExportScope('archive')">アーカイブ</div></div></div>
-                <div v-if="!isExportMode" class="form-group"><label>対象ユーザー</label><select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview"><option v-for="u in allAssignees" :value="u">{{ u }}</option></select></div>
-                <div v-if="!isExportMode" class="form-group"><label>対象期間</label><div class="chip-group"><div class="chip" :class="{selected: reportForm.targetRange==='today'}" @click="reportForm.targetRange='today'; updateReportPreview()">今日</div><div class="chip" :class="{selected: reportForm.targetRange==='yesterday'}" @click="reportForm.targetRange='yesterday'; updateReportPreview()">昨日</div></div></div>
-                <div v-if="!isExportMode" class="form-group"><label>抽出条件</label><div class="row"><select class="form-control" v-model="reportForm.sourceGuild" @change="reportForm.sourceChannel = ''; updateReportPreview()"><option value="">全てのサーバー</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="reportForm.sourceChannel" @change="updateReportPreview" :disabled="!reportForm.sourceGuild"><option value="">全てのチャンネル</option><option v-for="c in getChannelsForGuild(reportForm.sourceGuild)" :value="c">{{ c }}</option></select></div></div>
-                <div class="form-group"><label>プレビュー</label><textarea class="form-control" rows="10" readonly>{{ reportPreview }}</textarea><button class="btn-icon-small" @click="copyReport" style="margin-top:5px;">📋 コピー</button></div>
-                <hr v-if="!isExportMode" style="border:0; border-top:1px solid #eee; margin:15px 0;">
-                <div v-if="!isExportMode" class="form-group"><label>Discordへ送信</label><div class="row"><select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="reportForm.channelName"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(reportForm.guildName)" :value="c">{{ c }}</option></select></div></div>
-                <div class="modal-actions"><button class="btn btn-cancel" @click="showReportModal = false">閉じる</button><button v-if="!isExportMode" class="btn btn-save" @click="sendReport">📤 送信</button></div>
-            </div>
-        </div>
-
-        <div v-if="showConfigModal" class="modal-overlay" @click.self="showConfigModal = false">
-            <div class="modal" style="max-width: 500px;">
-                <h3>⚙️ 自動日報設定</h3>
-                <div class="form-group"><label>対象ユーザー</label><select class="form-control" v-model="configForm.userName" @change="loadUserConfig"><option disabled value="">ユーザーを選択...</option><option v-for="u in uniqueUsers" :value="u">{{ u }}</option></select></div>
-                <div v-if="configForm.userName">
-                    <div class="form-group"><label>自動送信時刻</label><input type="time" class="form-control" v-model="configForm.reportTime"></div>
-                    <div class="form-group"><label>送信先 (サーバー / チャンネル)</label><div class="row"><select class="form-control" v-model="configForm.targetGuild" @change="configForm.targetChannel = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="configForm.targetChannel"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(configForm.targetGuild)" :value="c">{{ c }}</option></select></div></div>
-                </div>
-                <div class="modal-actions"><button class="btn btn-cancel" @click="showConfigModal = false">閉じる</button><button class="btn btn-save" @click="saveConfig" :disabled="!configForm.userName">保存</button></div>
-            </div>
-        </div>
-
-        <div v-if="showBatchModal" class="modal-overlay" @click.self="showBatchModal = false">
-            <div class="modal" style="max-width: 450px;">
-                <h3>📡 送信先の一括変更</h3>
-                <p style="font-size:0.9rem; color:#555;">あなたの<b>「アーカイブ以外の全タスク」</b>の日報送信先を、以下に変更します。</p>
-                <div class="form-group"><label>サーバー</label><select class="form-control" v-model="batchForm.guildName" @change="batchForm.channelName = ''"><option disabled value="">選択してください</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select></div>
-                <div class="form-group"><label>チャンネル</label><select class="form-control" v-model="batchForm.channelName"><option disabled value="">選択してください</option><option v-for="c in getChannelsForGuild(batchForm.guildName)" :value="c">{{ c }}</option></select></div>
-                <div class="modal-actions"><button class="btn btn-cancel" @click="showBatchModal = false">キャンセル</button><button class="btn btn-save" @click="submitBatchChannel">一括適用</button></div>
-            </div>
-        </div>
+        <div v-if="showReportModal" class="modal-overlay" @click.self="showReportModal = false"><div class="modal" style="max-width: 500px;"><h3>📋 {{ isExportMode ? 'タスク一覧出力' : '日報抽出' }}</h3><div v-if="isExportMode" class="form-group"><div class="chip-group"><div class="chip" :class="{selected: exportScope==='all'}" @click="changeExportScope('all')">すべて</div><div class="chip" :class="{selected: exportScope==='active'}" @click="changeExportScope('active')">進行中</div><div class="chip" :class="{selected: exportScope==='done'}" @click="changeExportScope('done')">完了</div><div class="chip" :class="{selected: exportScope==='archive'}" @click="changeExportScope('archive')">アーカイブ</div></div></div><div v-if="!isExportMode" class="form-group"><label>対象ユーザー</label><select class="form-control" v-model="reportForm.targetUser" @change="updateReportPreview"><option v-for="u in allAssignees" :value="u">{{ u }}</option></select></div><div v-if="!isExportMode" class="form-group"><label>対象期間</label><div class="chip-group"><div class="chip" :class="{selected: reportForm.targetRange==='today'}" @click="reportForm.targetRange='today'; updateReportPreview()">今日</div><div class="chip" :class="{selected: reportForm.targetRange==='yesterday'}" @click="reportForm.targetRange='yesterday'; updateReportPreview()">昨日</div></div></div><div v-if="!isExportMode" class="form-group"><label>抽出条件</label><div class="row"><select class="form-control" v-model="reportForm.sourceGuild" @change="reportForm.sourceChannel = ''; updateReportPreview()"><option value="">全てのサーバー</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="reportForm.sourceChannel" @change="updateReportPreview" :disabled="!reportForm.sourceGuild"><option value="">全てのチャンネル</option><option v-for="c in getChannelsForGuild(reportForm.sourceGuild)" :value="c">{{ c }}</option></select></div></div><div class="form-group"><label>プレビュー</label><textarea class="form-control" rows="10" readonly>{{ reportPreview }}</textarea><button class="btn-icon-small" @click="copyReport" style="margin-top:5px;">📋 コピー</button></div><hr v-if="!isExportMode" style="border:0; border-top:1px solid #eee; margin:15px 0;"><div v-if="!isExportMode" class="form-group"><label>Discordへ送信</label><div class="row"><select class="form-control" v-model="reportForm.guildName" @change="reportForm.channelName = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="reportForm.channelName"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(reportForm.guildName)" :value="c">{{ c }}</option></select></div></div><div class="modal-actions"><button class="btn btn-cancel" @click="showReportModal = false">閉じる</button><button v-if="!isExportMode" class="btn btn-save" @click="sendReport">📤 送信</button></div></div></div>
+        <div v-if="showConfigModal" class="modal-overlay" @click.self="showConfigModal = false"><div class="modal" style="max-width: 500px;"><h3>⚙️ 自動日報設定</h3><div class="form-group"><label>対象ユーザー</label><select class="form-control" v-model="configForm.userName" @change="loadUserConfig"><option disabled value="">ユーザーを選択...</option><option v-for="u in uniqueUsers" :value="u">{{ u }}</option></select></div><div v-if="configForm.userName"><div class="form-group"><label>自動送信時刻</label><input type="time" class="form-control" v-model="configForm.reportTime"></div><div class="form-group"><label>送信先 (サーバー / チャンネル)</label><div class="row"><select class="form-control" v-model="configForm.targetGuild" @change="configForm.targetChannel = ''"><option value="">サーバー選択</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select><select class="form-control" v-model="configForm.targetChannel"><option value="">チャンネル選択</option><option v-for="c in getChannelsForGuild(configForm.targetGuild)" :value="c">{{ c }}</option></select></div></div></div><div class="modal-actions"><button class="btn btn-cancel" @click="showConfigModal = false">閉じる</button><button class="btn btn-save" @click="saveConfig" :disabled="!configForm.userName">保存</button></div></div></div>
+        <div v-if="showBatchModal" class="modal-overlay" @click.self="showBatchModal = false"><div class="modal" style="max-width: 450px;"><h3>📡 送信先の一括変更</h3><p style="font-size:0.9rem; color:#555;">あなたの<b>「アーカイブ以外の全タスク」</b>の日報送信先を、以下に変更します。</p><div class="form-group"><label>サーバー</label><select class="form-control" v-model="batchForm.guildName" @change="batchForm.channelName = ''"><option disabled value="">選択してください</option><option v-for="g in existingGuilds" :value="g">{{ g }}</option></select></div><div class="form-group"><label>チャンネル</label><select class="form-control" v-model="batchForm.channelName"><option disabled value="">選択してください</option><option v-for="c in getChannelsForGuild(batchForm.guildName)" :value="c">{{ c }}</option></select></div><div class="modal-actions"><button class="btn btn-cancel" @click="showBatchModal = false">キャンセル</button><button class="btn btn-save" @click="submitBatchChannel">一括適用</button></div></div></div>
     </div>
 
     <script>
@@ -387,75 +322,20 @@
                     showConfigModal: false, configForm: { userName: '', reportTime: '00:00', targetGuild: '', targetChannel: '' },
                     showFilterMenu: false, filterUsers: [], filterChannels: [], filterTags: [], filterGuilds: [], filterPriorities: [],
                     newTagInput: '', selectedExistingTag: '',
-                    // ★追加: ヘッダー開閉状態
-                    headerExpanded: true
+                    headerExpanded: true // ヘッダー開閉状態
                 }
             },
             computed: {
-                allAssignees() {
-                    const names = new Set();
-                    this.tasks.forEach(t => {
-                        if (t.assignee) names.add(t.assignee);
-                        if (t.userName) names.add(t.userName);
-                    });
-                    names.delete("Webで作成");
-                    return Array.from(names).sort();
-                },
-                uniqueUsers() {
-                    const list = [...this.allAssignees];
-                    if (this.tasks.some(t => !t.assignee)) {
-                        list.unshift('担当者未設定');
-                    }
-                    return list;
-                },
-                uniqueChannels() {
-                    const channels = new Set();
-                    let hasEmpty = false;
-                    this.tasks.forEach(t => {
-                        if (t.guildName && t.channelName) {
-                            channels.add(t.guildName + ' / ' + t.channelName);
-                        } else {
-                            hasEmpty = true;
-                        }
-                    });
-                    const list = Array.from(channels).sort();
-                    if (hasEmpty) list.unshift('(未設定)');
-                    return list;
-                },
+                allAssignees() { const names = new Set(); this.tasks.forEach(t => { if (t.assignee) names.add(t.assignee); if (t.userName) names.add(t.userName); }); names.delete("Webで作成"); return Array.from(names).sort(); },
+                uniqueUsers() { const list = [...this.allAssignees]; if (this.tasks.some(t => !t.assignee)) list.unshift('担当者未設定'); return list; },
+                uniqueChannels() { const channels = new Set(); let hasEmpty = false; this.tasks.forEach(t => { if (t.guildName && t.channelName) channels.add(t.guildName + ' / ' + t.channelName); else hasEmpty = true; }); const list = Array.from(channels).sort(); if (hasEmpty) list.unshift('(未設定)'); return list; },
                 existingGuilds() { return [...new Set(this.tasks.map(t => t.guildName).filter(n => n))].sort(); },
-                uniqueGuilds() {
-                    const guilds = new Set(this.tasks.map(t => t.guildName).filter(n => n));
-                    const list = Array.from(guilds).sort();
-                    if (this.tasks.some(t => !t.guildName)) {
-                        list.unshift('(未設定)');
-                    }
-                    return list;
-                },
-                uniqueTags() {
-                    const tags = new Set(this.tasks.flatMap(t => t.tags));
-                    const list = Array.from(tags).sort();
-                    if (this.tasks.some(t => !t.tags || t.tags.length === 0)) {
-                        list.unshift('(タグ未設定)');
-                    }
-                    return list;
-                },
+                uniqueGuilds() { const guilds = new Set(this.tasks.map(t => t.guildName).filter(n => n)); const list = Array.from(guilds).sort(); if (this.tasks.some(t => !t.guildName)) list.unshift('(未設定)'); return list; },
+                uniqueTags() { const tags = new Set(this.tasks.flatMap(t => t.tags)); const list = Array.from(tags).sort(); if (this.tasks.some(t => !t.tags || t.tags.length === 0)) list.unshift('(タグ未設定)'); return list; },
                 myUserName() { if (!this.myUserId) return null; const t = this.tasks.find(t => t.userId == this.myUserId); return t ? t.userName : null; },
-                filteredTasks() {
-                    return this.tasks.filter(t => {
-                        const targetName = t.assignee || '担当者未設定';
-                        if (this.filterUsers.length > 0 && !this.filterUsers.includes(targetName)) return false;
-                        if (this.filterGuilds.length > 0) { const key = t.guildName || '(未設定)'; if (!this.filterGuilds.includes(key)) return false; }
-                        if (this.filterChannels.length > 0) { const key = (t.guildName && t.channelName) ? (t.guildName + ' / ' + t.channelName) : '(未設定)'; if (!this.filterChannels.includes(key)) return false; }
-                        if (this.filterTags.length > 0) { if (this.filterTags.includes('(タグ未設定)') && (!t.tags || t.tags.length === 0)) return true; if (!t.tags || !t.tags.some(tag => this.filterTags.includes(tag))) return false; }
-                        if (this.filterPriorities.length > 0) { if (!this.filterPriorities.includes(t.priority)) return false; }
-                        return true;
-                    });
-                },
+                filteredTasks() { return this.tasks.filter(t => { const targetName = t.assignee || '担当者未設定'; if (this.filterUsers.length > 0 && !this.filterUsers.includes(targetName)) return false; if (this.filterGuilds.length > 0) { const key = t.guildName || '(未設定)'; if (!this.filterGuilds.includes(key)) return false; } if (this.filterChannels.length > 0) { const key = (t.guildName && t.channelName) ? (t.guildName + ' / ' + t.channelName) : '(未設定)'; if (!this.filterChannels.includes(key)) return false; } if (this.filterTags.length > 0) { if (this.filterTags.includes('(タグ未設定)') && (!t.tags || t.tags.length === 0)) return true; if (!t.tags || !t.tags.some(tag => this.filterTags.includes(tag))) return false; } if (this.filterPriorities.length > 0) { if (!this.filterPriorities.includes(t.priority)) return false; } return true; }); },
                 tasksActive() { return this.applySort(this.filteredTasks.filter(t => !t.isForgotten && !t.completedAt)); },
-                tasksDone() {
-                    const list = this.filteredTasks.filter(t => !t.isForgotten && t.completedAt);
-                    return this.sortMode === 'priority' ? list.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)) : this.applySort(list);
-                },
+                tasksDone() { const list = this.filteredTasks.filter(t => !t.isForgotten && t.completedAt); return this.sortMode === 'priority' ? list.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)) : this.applySort(list); },
                 tasksArchive() { return this.filteredTasks.filter(t => t.isForgotten); }
             },
             mounted() {
@@ -477,134 +357,65 @@
                         this.loading = false;
                     } catch { }
                 },
-                getAvatar(userName) {
-                    if (userName === '担当者未設定') return '';
-                    const t = this.tasks.find(x => x.assignee === userName);
-                    return t ? t.avatarUrl : '';
-                },
-                getChannelsForGuild(guildName) {
-                    if (!guildName) return [];
-                    return [...new Set(this.tasks.filter(t => t.guildName === guildName).map(t => t.channelName).filter(n => n))].sort();
-                },
+                getAvatar(userName) { if (userName === '担当者未設定') return ''; const t = this.tasks.find(x => x.assignee === userName); return t ? t.avatarUrl : ''; },
+                getChannelsForGuild(guildName) { if (!guildName) return []; return [...new Set(this.tasks.filter(t => t.guildName === guildName).map(t => t.channelName).filter(n => n))].sort(); },
                 toggleFilterUser(u) { if (this.filterUsers.includes(u)) this.filterUsers = this.filterUsers.filter(x => x !== u); else this.filterUsers.push(u); },
                 toggleFilterChannel(c) { if (this.filterChannels.includes(c)) this.filterChannels = this.filterChannels.filter(x => x !== c); else this.filterChannels.push(c); },
                 toggleFilterTag(t) { if (this.filterTags.includes(t)) this.filterTags = this.filterTags.filter(x => x !== t); else this.filterTags.push(t); },
                 toggleFilterGuild(g) { if (this.filterGuilds.includes(g)) this.filterGuilds = this.filterGuilds.filter(x => x !== g); else this.filterGuilds.push(g); },
                 toggleFilterPriority(p) { if (this.filterPriorities.includes(p)) this.filterPriorities = this.filterPriorities.filter(x => x !== p); else this.filterPriorities.push(p); },
-                openBatchChannelModal() {
-                    const lastTask = this.tasksActive.length > 0 ? this.tasksActive[0] : null;
-                    this.batchForm = { guildName: lastTask ? lastTask.guildName : '', channelName: lastTask ? lastTask.channelName : '' };
-                    this.showBatchModal = true;
-                },
-                async submitBatchChannel() {
-                    if (!this.batchForm.guildName || !this.batchForm.channelName) { alert('選択してください'); return; }
-                    try {
-                        const payload = { ...this.batchForm, userId: this.myUserId };
-                        await fetch('/api/batch/channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                        this.showBatchModal = false; alert('変更しました'); this.fetchTasks();
-                    } catch (e) { }
-                },
-                async cleanupArchive() {
-                    const targets = this.filterUsers;
-                    if (!confirm('削除しますか？')) return;
-                    await fetch('/api/archive/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUserNames: targets }) });
-                    this.fetchTasks();
-                },
-                openCreateModal() {
-                    this.isCreating = true;
-                    const now = new Date();
-                    const nextWeek = new Date();
-                    nextWeek.setDate(now.getDate() + 7);
-                    const fmt = (d) => d.getFullYear() + '-' + (d.getMonth() + 1).toString().padStart(2, '0') + '-' + d.getDate().toString().padStart(2, '0');
-                    this.editForm = {
-                        content: '', priority: 0, difficulty: 0, tags: [], assignee: '',
-                        userName: '', guildName: '', channelName: '',
-                        startDate: fmt(now), dueDate: fmt(nextWeek), timeMode: 0
-                    };
-                    this.newTagInput = ''; this.selectedExistingTag = '';
-                },
-                openEdit(task) {
-                    this.isCreating = false;
-                    this.editForm = { ...task, tags: [...task.tags] };
-                    if (this.editForm.startDate) this.editForm.startDate = this.editForm.startDate.split('T')[0];
-                    if (this.editForm.dueDate) this.editForm.dueDate = this.editForm.dueDate.split('T')[0];
-                    this.newTagInput = ''; this.selectedExistingTag = '';
-                },
+                openBatchChannelModal() { const lastTask = this.tasksActive.length > 0 ? this.tasksActive[0] : null; this.batchForm = { guildName: lastTask ? lastTask.guildName : '', channelName: lastTask ? lastTask.channelName : '' }; this.showBatchModal = true; },
+                async submitBatchChannel() { if (!this.batchForm.guildName || !this.batchForm.channelName) { alert('選択してください'); return; } try { const payload = { ...this.batchForm, userId: this.myUserId }; await fetch('/api/batch/channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.showBatchModal = false; alert('変更しました'); this.fetchTasks(); } catch (e) { } },
+                async cleanupArchive() { const targets = this.filterUsers; if (!confirm('削除しますか？')) return; await fetch('/api/archive/cleanup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUserNames: targets }) }); this.fetchTasks(); },
+                openCreateModal() { this.isCreating = true; const now = new Date(); const nextWeek = new Date(); nextWeek.setDate(now.getDate() + 7); const fmt = (d) => d.getFullYear() + '-' + (d.getMonth() + 1).toString().padStart(2, '0') + '-' + d.getDate().toString().padStart(2, '0'); this.editForm = { content: '', priority: 0, difficulty: 0, tags: [], assignee: '', userName: '', guildName: '', channelName: '', startDate: fmt(now), dueDate: fmt(nextWeek), timeMode: 0 }; this.newTagInput = ''; this.selectedExistingTag = ''; },
+                openEdit(task) { this.isCreating = false; this.editForm = { ...task, tags: [...task.tags] }; if (this.editForm.startDate) this.editForm.startDate = this.editForm.startDate.split('T')[0]; if (this.editForm.dueDate) this.editForm.dueDate = this.editForm.dueDate.split('T')[0]; this.newTagInput = ''; this.selectedExistingTag = ''; },
                 removeTag(tag) { this.editForm.tags = this.editForm.tags.filter(t => t !== tag); },
                 addExistingTag() { if (this.selectedExistingTag && !this.editForm.tags.includes(this.selectedExistingTag)) { this.editForm.tags.push(this.selectedExistingTag); } this.selectedExistingTag = ''; },
                 addNewTag() { const t = this.newTagInput.trim(); if (t && !this.editForm.tags.includes(t)) { this.editForm.tags.push(t); } this.newTagInput = ''; },
-                async saveTask() {
-                    if (!this.editForm.content) { alert('内容を入力してください'); return; }
-                    if (this.editForm.startDate && !this.isValidDate(this.editForm.startDate)) { alert('開始日が無効です'); return; }
-                    if (this.editForm.dueDate && !this.isValidDate(this.editForm.dueDate)) { alert('期日が無効です'); return; }
-                    const payload = { ...this.editForm };
-                    await fetch(this.isCreating ? '/api/create' : '/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    this.editForm = null; this.fetchTasks();
-                },
-                openReportModal() {
-                    this.isExportMode = false;
-                    let target = '';
-                    if (this.filterUsers.length === 1) target = this.filterUsers[0];
-                    else if (this.myUserName) target = this.myUserName;
-                    else if (this.allAssignees.length > 0) target = this.allAssignees[0];
-                    this.reportForm = { targetUser: target, guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' };
-                    this.updateReportPreview();
-                    this.showReportModal = true;
-                },
+                async saveTask() { if (!this.editForm.content) { alert('内容を入力してください'); return; } if (this.editForm.startDate && !this.isValidDate(this.editForm.startDate)) { alert('開始日が無効です'); return; } if (this.editForm.dueDate && !this.isValidDate(this.editForm.dueDate)) { alert('期日が無効です'); return; } const payload = { ...this.editForm }; await fetch(this.isCreating ? '/api/create' : '/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.editForm = null; this.fetchTasks(); },
+                openReportModal() { this.isExportMode = false; let target = ''; if (this.filterUsers.length === 1) target = this.filterUsers[0]; else if (this.myUserName) target = this.myUserName; else if (this.allAssignees.length > 0) target = this.allAssignees[0]; this.reportForm = { targetUser: target, guildName: '', channelName: '', sourceGuild: '', sourceChannel: '', targetRange: 'today' }; this.updateReportPreview(); this.showReportModal = true; },
                 exportList(scope) { this.isExportMode = true; this.exportScope = scope; this.generateExportText(); this.showReportModal = true; },
                 changeExportScope(scope) { this.exportScope = scope; this.generateExportText(); },
-                generateExportText() {
-                    const scope = this.exportScope;
-                    let text = "";
-                    const isFiltered = this.filterUsers.length > 0 || this.filterChannels.length > 0 || this.filterTags.length > 0 || this.filterGuilds.length > 0 || this.filterPriorities.length > 0;
-                    const filterNote = isFiltered ? " (絞り込み済み)" : "";
-                    const formatTasks = (list, title, isDone = false) => {
-                        if (list.length === 0) return "";
-                        let res = `\n${title} (${list.length}件)\n`;
-                        res += list.map(t => {
-                            let prio = this.getPrioLabel(t); if (prio) prio = `[${prio}] `;
-                            let time = ""; if (isDone && t.completedAt) { time = `[${this.formatTime(t.completedAt)}] `; }
-                            return `・${time}${prio}${t.content}`;
-                        }).join('\n');
-                        return res + "\n";
-                    };
-                    if (scope === 'all') { text += `📊 タスク一覧出力${filterNote}\n`; text += formatTasks(this.tasksActive, "🚀 進行中"); text += formatTasks(this.tasksDone, "✅ 完了", true); text += formatTasks(this.tasksArchive, "🗑️ アーカイブ"); }
-                    else if (scope === 'active') { text += formatTasks(this.tasksActive, `🚀 未完了タスク一覧${filterNote}`); }
-                    else if (scope === 'done') { text += formatTasks(this.tasksDone, `✅ 完了タスク一覧${filterNote}`, true); }
-                    else if (scope === 'archive') { text += formatTasks(this.tasksArchive, `🗑️ アーカイブ一覧${filterNote}`); }
-                    this.reportPreview = text.trim() || "(表示するタスクはありません)";
-                },
-                updateReportPreview() {
-                    if (this.isExportMode) return;
-                    const u = this.reportForm.targetUser; const sg = this.reportForm.sourceGuild; const sc = this.reportForm.sourceChannel;
-                    if (!u) { this.reportPreview = '(ユーザーを選択してください)'; return; }
-                    const today = new Date(); today.setHours(0, 0, 0, 0);
-                    let start = new Date(today); let end = new Date(today); end.setDate(end.getDate() + 1);
-                    let dateLabel = "本日";
-                    if (this.reportForm.targetRange === 'yesterday') { start.setDate(start.getDate() - 1); end = new Date(today); dateLabel = "昨日"; }
-                    const completed = this.tasks.filter(t => (t.assignee === u || (!t.assignee && t.userName === u)) && t.completedAt && new Date(t.completedAt) >= start && new Date(t.completedAt) < end && (!sg || t.guildName === sg) && (!sc || t.channelName === sc)).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt));
-                    if (completed.length === 0) { this.reportPreview = `📭 Daily Report: ${u}\n${dateLabel}の完了タスクはありません。`; }
-                    else {
-                        const lines = completed.map(t => { let loc = ''; if (!sg && t.guildName) loc = ` [${t.guildName}]`; return `・[${this.formatTime(t.completedAt)}${loc}] ${t.content}`; });
-                        let header = `📊 Daily Report: ${u}`; if (sg) { header += ` (${sg}`; if (sc) header += ` / ${sc}`; header += `)`; }
-                        this.reportPreview = `${header}\n${dateLabel} ${completed.length}件 完了！\n\n` + lines.join('\n');
-                    }
-                },
+                generateExportText() { const scope = this.exportScope; let text = ""; const isFiltered = this.filterUsers.length > 0 || this.filterChannels.length > 0 || this.filterTags.length > 0 || this.filterGuilds.length > 0 || this.filterPriorities.length > 0; const filterNote = isFiltered ? " (絞り込み済み)" : ""; const formatTasks = (list, title, isDone = false) => { if (list.length === 0) return ""; let res = `\n${title} (${list.length}件)\n`; res += list.map(t => { let prio = this.getPrioLabel(t); if (prio) prio = `[${prio}] `; let time = ""; if (isDone && t.completedAt) { time = `[${this.formatTime(t.completedAt)}] `; } return `・${time}${prio}${t.content}`; }).join('\n'); return res + "\n"; }; if (scope === 'all') { text += `📊 タスク一覧出力${filterNote}\n`; text += formatTasks(this.tasksActive, "🚀 進行中"); text += formatTasks(this.tasksDone, "✅ 完了", true); text += formatTasks(this.tasksArchive, "🗑️ アーカイブ"); } else if (scope === 'active') { text += formatTasks(this.tasksActive, `🚀 未完了タスク一覧${filterNote}`); } else if (scope === 'done') { text += formatTasks(this.tasksDone, `✅ 完了タスク一覧${filterNote}`, true); } else if (scope === 'archive') { text += formatTasks(this.tasksArchive, `🗑️ アーカイブ一覧${filterNote}`); } this.reportPreview = text.trim() || "(表示するタスクはありません)"; },
+                updateReportPreview() { if (this.isExportMode) return; const u = this.reportForm.targetUser; const sg = this.reportForm.sourceGuild; const sc = this.reportForm.sourceChannel; if (!u) { this.reportPreview = '(ユーザーを選択してください)'; return; } const today = new Date(); today.setHours(0, 0, 0, 0); let start = new Date(today); let end = new Date(today); end.setDate(end.getDate() + 1); let dateLabel = "本日"; if (this.reportForm.targetRange === 'yesterday') { start.setDate(start.getDate() - 1); end = new Date(today); dateLabel = "昨日"; } const completed = this.tasks.filter(t => (t.assignee === u || (!t.assignee && t.userName === u)) && t.completedAt && new Date(t.completedAt) >= start && new Date(t.completedAt) < end && (!sg || t.guildName === sg) && (!sc || t.channelName === sc)).sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt)); if (completed.length === 0) { this.reportPreview = `📭 Daily Report: ${u}\n${dateLabel}の完了タスクはありません。`; } else { const lines = completed.map(t => { let loc = ''; if (!sg && t.guildName) loc = ` [${t.guildName}]`; return `・[${this.formatTime(t.completedAt)}${loc}] ${t.content}`; }); let header = `📊 Daily Report: ${u}`; if (sg) { header += ` (${sg}`; if (sc) header += ` / ${sc}`; header += `)`; } this.reportPreview = `${header}\n${dateLabel} ${completed.length}件 完了！\n\n` + lines.join('\n'); } },
                 copyReport() { navigator.clipboard.writeText(this.reportPreview); alert('コピーしました！'); },
-                async sendReport() {
-                    if (!this.reportForm.targetUser || !this.reportForm.guildName || !this.reportForm.channelName) { alert('送信先を選択してください'); return; }
-                    if (!confirm('Discordに送信しますか？')) return;
-                    await fetch('/api/report/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUser: this.reportForm.targetUser, targetGuild: this.reportForm.guildName, targetChannel: this.reportForm.channelName, sourceGuild: this.reportForm.sourceGuild, sourceChannel: this.reportForm.sourceChannel, targetRange: this.reportForm.targetRange }) });
-                    this.showReportModal = false; alert('送信しました！');
-                },
+                async sendReport() { if (!this.reportForm.targetUser || !this.reportForm.guildName || !this.reportForm.channelName) { alert('送信先を選択してください'); return; } if (!confirm('Discordに送信しますか？')) return; await fetch('/api/report/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetUser: this.reportForm.targetUser, targetGuild: this.reportForm.guildName, targetChannel: this.reportForm.channelName, sourceGuild: this.reportForm.sourceGuild, sourceChannel: this.reportForm.sourceChannel, targetRange: this.reportForm.targetRange }) }); this.showReportModal = false; alert('送信しました！'); },
                 openConfigModal() { this.configForm = { userName: this.myUserName || '', reportTime: '00:00', targetGuild: '', targetChannel: '' }; this.showConfigModal = true; if (this.configForm.userName) this.loadUserConfig(); },
                 loadUserConfig() { if (!this.configForm.userName) return; const userTask = this.tasks.find(t => t.userName === this.configForm.userName); if (!userTask) return; const conf = this.configs.find(c => c.userId == userTask.userId); if (conf) { this.configForm.reportTime = conf.reportTime; this.configForm.targetGuild = conf.targetGuild || ''; this.configForm.targetChannel = conf.targetChannel || ''; } else { this.configForm.reportTime = '00:00'; this.configForm.targetGuild = ''; this.configForm.targetChannel = ''; } },
                 async saveConfig() { const userTask = this.tasks.find(t => t.userName === this.configForm.userName); if (!userTask) { alert('ユーザーが見つかりません'); return; } const payload = { userId: userTask.userId, userName: userTask.userName, reportTime: this.configForm.reportTime, targetGuild: this.configForm.targetGuild, targetChannel: this.configForm.targetChannel }; await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); this.showConfigModal = false; alert('保存しました'); this.fetchTasks(); },
                 onDragStart(evt, t) { evt.dataTransfer.dropEffect = 'move'; evt.dataTransfer.effectAllowed = 'move'; evt.dataTransfer.setData('taskId', t.id); },
                 onDrop(evt, s) { const id = evt.dataTransfer.getData('taskId'); const t = this.tasks.find(x => x.id === id); if (t) { if (s === 'active') this.moveToActive(t); else if (s === 'done') this.moveToDone(t); else this.moveToArchive(t); } },
-                async moveToDone(t) { if (t.isForgotten) await this.post('/api/restore', t); if (!t.completedAt) { t.completedAt = new Date().toISOString(); await this.post('/api/done', t); } },
-                async moveToActive(t) { if (t.isForgotten) await this.post('/api/restore', t); if (t.completedAt) { t.completedAt = null; await this.post('/api/done', t); } },
-                async moveToArchive(t) { if (!t.isForgotten) { t.isForgotten = true; await this.post('/api/archive', t); } },
+
+                // ★修正: 進行中への移動 (アーカイブ復帰、完了解除を統合)
+                async moveToActive(t) {
+                    if (t.isForgotten) {
+                        await this.post('/api/restore', t);
+                        t.isForgotten = false;
+                        // サーバー側で日付を維持するようになったため、Activeにしたい場合は明示的にクリアが必要
+                        t.completedAt = null;
+                    } else if (t.completedAt) {
+                        t.completedAt = null;
+                        await this.post('/api/done', t);
+                    }
+                },
+                // ★修正: 完了への移動
+                async moveToDone(t) {
+                    if (t.isForgotten) {
+                        await this.post('/api/restore', t);
+                        t.isForgotten = false;
+                    }
+                    if (!t.completedAt) {
+                        t.completedAt = new Date().toISOString();
+                        await this.post('/api/done', t);
+                    }
+                },
+                // アーカイブへ移動
+                async moveToArchive(t) {
+                    if (!t.isForgotten) {
+                        t.isForgotten = true;
+                        await this.post('/api/archive', t);
+                    }
+                },
                 async deleteTask(t) { if (confirm('完全削除しますか？')) await this.post('/api/delete', t); },
                 async post(u, d) { await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }); this.fetchTasks(); },
                 getAutoScore(t) { let timeScore = 300; if (t.timeMode === 1) timeScore = 100; else if (t.timeMode === 2) timeScore = 200; let dateScore = 30; if (t.dueDate) { const due = new Date(t.dueDate); const now = new Date(); now.setHours(0, 0, 0, 0); const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24)); if (diffDays <= 3) dateScore = 10; else dateScore = 20; } return timeScore + dateScore; },

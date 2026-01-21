@@ -43,7 +43,6 @@ app.MapRazorPages();
 //        完全版APIリスト
 // ==========================================
 
-// ★修正: フィルタ(Where)を削除し、アーカイブや完了済みも含めた全てのタスクを返す
 app.MapGet("/api/tasks", () =>
 {
     lock (Globals.Lock)
@@ -90,9 +89,23 @@ app.MapPost("/api/update", (TaskItem updated) =>
 });
 
 app.MapPost("/api/done", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = item.CompletedAt; Globals.SaveData(); } } return Results.Ok(); });
-app.MapPost("/api/restore", (TaskItem item) => { lock (Globals.Lock) { var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id); if (t != null) { t.CompletedAt = null; t.IsForgotten = false; Globals.SaveData(); } } return Results.Ok(); });
 
-// アーカイブ処理
+// ★修正: アーカイブからの復帰時、完了日(CompletedAt)は触らないように変更
+// これにより、「完了状態のままアーカイブから戻す」ことが可能になります。
+app.MapPost("/api/restore", (TaskItem item) => {
+    lock (Globals.Lock)
+    {
+        var t = Globals.AllTasks.FirstOrDefault(x => x.Id == item.Id);
+        if (t != null)
+        {
+            // t.CompletedAt = null; // ←この行を削除しました
+            t.IsForgotten = false;
+            Globals.SaveData();
+        }
+    }
+    return Results.Ok();
+});
+
 app.MapPost("/api/archive", (TaskItem item) => {
     lock (Globals.Lock)
     {
@@ -107,7 +120,6 @@ app.MapPost("/api/archive", (TaskItem item) => {
     return Results.Ok();
 });
 
-// 物理削除処理
 app.MapPost("/api/delete", (TaskItem item) => {
     lock (Globals.Lock)
     {
